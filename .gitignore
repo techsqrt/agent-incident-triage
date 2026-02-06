@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+*.egg
+
+# Node
+node_modules/
+.next/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Database
+local.db
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+htmlcov/
+.coverage
+test-results/
+playwright-report/
+
+# Build
+build/
