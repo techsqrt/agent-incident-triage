@@ -1,14 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchDomains } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { fetchDomains, createIncident } from '@/lib/api';
 import type { Domain } from '@/lib/types';
 import { DomainTabs } from '@/app/components/DomainTabs';
 
 export default function TriagePage() {
+  const router = useRouter();
   const [domains, setDomains] = useState<Domain[]>([]);
   const [activeDomain, setActiveDomain] = useState('medical');
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,6 +26,18 @@ export default function TriagePage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleStartIncident() {
+    setCreating(true);
+    setError(null);
+    try {
+      const incident = await createIncident(activeDomain);
+      router.push(`/triage/${incident.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create incident');
+      setCreating(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -67,10 +82,25 @@ export default function TriagePage() {
           </h2>
           <p style={{ color: '#666', marginBottom: '16px' }}>
             Start a new medical triage incident to begin the assessment process.
+            You can describe symptoms via text chat or voice recording.
           </p>
-          <p style={{ color: '#999', fontSize: '14px' }}>
-            Chat and voice interfaces will be available after starting an incident.
-          </p>
+          <button
+            onClick={handleStartIncident}
+            disabled={creating}
+            style={{
+              padding: '12px 24px',
+              background: '#333',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: creating ? 'not-allowed' : 'pointer',
+              opacity: creating ? 0.5 : 1,
+              fontWeight: 'bold',
+              fontSize: '14px',
+            }}
+          >
+            {creating ? 'Creating...' : 'Start New Incident'}
+          </button>
         </div>
       )}
     </div>

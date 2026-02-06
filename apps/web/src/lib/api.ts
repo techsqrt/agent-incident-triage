@@ -1,7 +1,7 @@
 import type {
   DomainsResponse,
   Incident,
-  Message,
+  MessageWithAssessmentResponse,
   TimelineResponse,
   VoiceResponse,
 } from './types';
@@ -36,7 +36,7 @@ export async function fetchIncident(id: string): Promise<Incident> {
   return res.json();
 }
 
-export async function sendMessage(incidentId: string, content: string): Promise<Message> {
+export async function sendMessage(incidentId: string, content: string): Promise<MessageWithAssessmentResponse> {
   const res = await fetch(`${API_BASE}/api/triage/incidents/${incidentId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
