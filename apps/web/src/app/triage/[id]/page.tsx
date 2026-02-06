@@ -116,13 +116,15 @@ export default function IncidentDetailPage() {
       </div>
 
       <div>
-        {activeTab === 'chat' && (
+        <div style={{ display: activeTab === 'chat' ? 'block' : 'none' }}>
           <ChatPanel incidentId={incidentId} onAssessment={handleAssessment} />
-        )}
-        {activeTab === 'voice' && (
+        </div>
+        <div style={{ display: activeTab === 'voice' ? 'block' : 'none' }}>
           <VoiceRecorder incidentId={incidentId} onAssessment={handleAssessment} />
-        )}
-        {activeTab === 'timeline' && <Timeline incidentId={incidentId} />}
+        </div>
+        <div style={{ display: activeTab === 'timeline' ? 'block' : 'none' }}>
+          <Timeline incidentId={incidentId} />
+        </div>
       </div>
     </div>
   );

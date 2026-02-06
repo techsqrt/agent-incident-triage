@@ -24,11 +24,11 @@ const ACUITY_LABELS: Record<number, string> = {
 
 export function AssessmentCard({ assessment }: AssessmentCardProps) {
   const result = assessment.result_json;
-  const acuity = (result.acuity as number) || 5;
-  const escalate = result.escalate as boolean;
-  const disposition = (result.disposition as string) || '';
-  const summary = (result.summary as string) || '';
-  const redFlags = (result.red_flags as Array<{ name: string; reason: string }>) || [];
+  const acuity = typeof result.acuity === 'number' ? result.acuity : 5;
+  const escalate = result.escalate === true;
+  const disposition = typeof result.disposition === 'string' ? result.disposition : '';
+  const summary = typeof result.summary === 'string' ? result.summary : '';
+  const redFlags = Array.isArray(result.red_flags) ? result.red_flags as Array<{ name: string; reason: string }> : [];
 
   return (
     <div

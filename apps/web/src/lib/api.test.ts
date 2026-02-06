@@ -32,8 +32,9 @@ describe('fetchDomains', () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
+      json: () => Promise.resolve({ detail: 'Internal server error' }),
     });
 
-    await expect(fetchDomains()).rejects.toThrow('Failed to fetch domains: 500');
+    await expect(fetchDomains()).rejects.toThrow('Internal server error');
   });
 });

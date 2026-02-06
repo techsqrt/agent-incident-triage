@@ -32,6 +32,7 @@ class PipelineResult:
     audio_base64: str | None = None
     assessment_row: dict | None = None
     trace_id: str = ""
+    error: str | None = None
 
 
 def run_voice_pipeline(
@@ -48,6 +49,8 @@ def run_voice_pipeline(
     """Run the full voice pipeline for a medical triage incident.
 
     Adapter functions are injectable for testing. When None, uses real adapters.
+    Each step is wrapped in error handling — failures log a STEP_FAILED audit
+    event and return a partial result rather than crashing.
     """
     from services.api.src.api.adapters.openai_stt import transcribe as default_stt
     from services.api.src.api.adapters.openai_llm import (
@@ -72,7 +75,19 @@ def run_voice_pipeline(
 
     # --------------- Step 1: STT ---------------
     t0 = time.monotonic()
-    stt_result = stt_fn(audio_bytes, filename)
+    try:
+        stt_result = stt_fn(audio_bytes, filename)
+    except Exception as exc:
+        stt_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("pipeline_stt_failed", extra={
+            "incident_id": incident_id, "trace_id": trace_id, "error": str(exc),
+        })
+        audit_repo.append(
+            incident_id=incident_id, trace_id=trace_id, step="STT_FAILED",
+            payload_json={"error": str(exc)}, latency_ms=stt_ms,
+        )
+        result.error = f"STT failed: {exc}"
+        return result
     stt_ms = int((time.monotonic() - t0) * 1000)
 
     result.transcript = stt_result.text
@@ -93,10 +108,29 @@ def run_voice_pipeline(
 
     # --------------- Step 2: Extract ---------------
     t0 = time.monotonic()
-    extraction = extract_fn(stt_result.text)
+    try:
+        extraction = extract_fn(stt_result.text)
+    except Exception as exc:
+        extract_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("pipeline_extract_failed", extra={
+            "incident_id": incident_id, "trace_id": trace_id, "error": str(exc),
+        })
+        audit_repo.append(
+            incident_id=incident_id, trace_id=trace_id, step="EXTRACT_FAILED",
+            payload_json={"error": str(exc)}, latency_ms=extract_ms,
+        )
+        # Fall back to deterministic extraction
+        from services.api.src.api.domains.medical.extract import extract_from_text
+        extraction = extract_from_text(stt_result.text)
     extract_ms = int((time.monotonic() - t0) * 1000)
 
     result.extraction = extraction
+
+    # Determine which model was actually used
+    extract_model = "deterministic"
+    from services.api.src.api.config import settings
+    if settings.openai_api_key:
+        extract_model = settings.openai_model_text
 
     audit_repo.append(
         incident_id=incident_id,
@@ -104,7 +138,7 @@ def run_voice_pipeline(
         step="EXTRACT",
         payload_json=redact_dict(extraction.model_dump()),
         latency_ms=extract_ms,
-        model_used="deterministic",
+        model_used=extract_model,
     )
 
     # --------------- Step 3: Triage Rules ---------------
@@ -134,9 +168,19 @@ def run_voice_pipeline(
 
     # --------------- Step 4: Generate Response ---------------
     t0 = time.monotonic()
-    response_text, token_usage = generate_fn(
-        extraction.model_dump(),
-    )
+    try:
+        response_text, token_usage = generate_fn(extraction.model_dump())
+    except Exception as exc:
+        gen_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("pipeline_generate_failed", extra={
+            "incident_id": incident_id, "trace_id": trace_id, "error": str(exc),
+        })
+        audit_repo.append(
+            incident_id=incident_id, trace_id=trace_id, step="GENERATE_FAILED",
+            payload_json={"error": str(exc)}, latency_ms=gen_ms,
+        )
+        response_text = "I'm having trouble generating a response. Please try again."
+        token_usage = {}
     gen_ms = int((time.monotonic() - t0) * 1000)
 
     result.response_text = response_text
@@ -148,24 +192,31 @@ def run_voice_pipeline(
         step="GENERATE",
         payload_json={"disposition": assessment.disposition},
         latency_ms=gen_ms,
-        model_used="deterministic",
+        model_used=extract_model,
         token_usage_json=token_usage if token_usage else None,
     )
 
     # --------------- Step 5: TTS ---------------
     t0 = time.monotonic()
-    tts_result = tts_fn(response_text)
+    try:
+        tts_result = tts_fn(response_text)
+        result.audio_base64 = tts_result.audio_base64 or None
+        tts_model = tts_result.model
+    except Exception as exc:
+        logger.error("pipeline_tts_failed", extra={
+            "incident_id": incident_id, "trace_id": trace_id, "error": str(exc),
+        })
+        tts_model = "failed"
+        result.audio_base64 = None
     tts_ms = int((time.monotonic() - t0) * 1000)
-
-    result.audio_base64 = tts_result.audio_base64 or None
 
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
         step="TTS",
-        payload_json={"audio_length": len(tts_result.audio_base64) if tts_result.audio_base64 else 0},
+        payload_json={"audio_length": len(result.audio_base64) if result.audio_base64 else 0},
         latency_ms=tts_ms,
-        model_used=tts_result.model,
+        model_used=tts_model,
     )
 
     logger.info("pipeline_complete", extra={

@@ -18,6 +18,9 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const MAX_RECORDING_SECONDS = 60;
 
   async function startRecording() {
     setError(null);
@@ -39,12 +42,23 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
 
       recorder.start();
       setRecording(true);
+
+      timerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+          setRecording(false);
+        }
+      }, MAX_RECORDING_SECONDS * 1000);
     } catch (err) {
       setError('Microphone access denied. Please allow microphone access.');
     }
   }
 
   function stopRecording() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     if (mediaRecorderRef.current && recording) {
       mediaRecorderRef.current.stop();
       setRecording(false);

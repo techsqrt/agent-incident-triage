@@ -71,6 +71,7 @@ export function Timeline({ incidentId }: TimelineProps) {
           <div
             key={event.id}
             style={{
+              position: 'relative',
               display: 'flex',
               gap: '12px',
               marginBottom: '16px',
@@ -81,12 +82,12 @@ export function Timeline({ incidentId }: TimelineProps) {
             <div
               style={{
                 position: 'absolute',
-                left: '11px',
+                left: '-6px',
+                top: '4px',
                 width: '10px',
                 height: '10px',
                 borderRadius: '50%',
                 background: event.step === 'TRIAGE_RULES' ? '#c0392b' : '#333',
-                marginTop: '4px',
               }}
             />
             <div style={{ flex: 1 }}>

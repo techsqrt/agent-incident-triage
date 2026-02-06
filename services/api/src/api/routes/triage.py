@@ -15,8 +15,11 @@ from services.api.src.api.db.repository import (
     IncidentRepository,
     MessageRepository,
 )
+from services.api.src.api.domains.medical.extract import extract_from_text
 from services.api.src.api.domains.medical.rules import assess
 from services.api.src.api.domains.medical.schemas import MedicalExtraction
+
+MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
 from services.api.src.api.schemas.responses import (
     AssessmentResponse,
     AuditEventResponse,
@@ -143,8 +146,8 @@ def send_message(
     # 1) Persist patient message
     patient_msg = msg_repo.create(incident_id, "patient", body.content)
 
-    # 2) Run medical extraction (deterministic for now — LLM adapter in M5)
-    extraction = _extract_from_text(body.content)
+    # 2) Run deterministic keyword extraction (text chat stays deterministic)
+    extraction = extract_from_text(body.content)
 
     audit_repo.append(
         incident_id=incident_id,
@@ -271,10 +274,17 @@ async def send_voice(
     if incident["status"] == "CLOSED":
         raise HTTPException(400, "Incident is closed")
 
+    # Reads full upload then checks size — returns a clear 413 JSON error
+    # so the client can show a friendly message instead of a raw failure.
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Audio file too large (max 10 MB)")
+
+    from starlette.concurrency import run_in_threadpool
     from services.api.src.api.core.pipeline import run_voice_pipeline
 
-    audio_bytes = await audio.read()
-    result = run_voice_pipeline(
+    result = await run_in_threadpool(
+        run_voice_pipeline,
         incident_id=incident_id,
         audio_bytes=audio_bytes,
         filename=audio.filename or "audio.webm",
@@ -302,56 +312,14 @@ async def send_voice(
 
 
 # ---------------------------------------------------------------------------
-# Helpers (deterministic fallbacks when OPENAI_API_KEY not set)
+# Helpers
 # ---------------------------------------------------------------------------
-
-def _extract_from_text(text: str) -> MedicalExtraction:
-    """Simple keyword-based extraction. Replaced by LLM adapter in M5."""
-    symptoms = []
-    pain_scale = None
-    mental_status = "alert"
-
-    lower = text.lower()
-
-    # Symptom keyword detection
-    symptom_keywords = [
-        "chest pain", "shortness of breath", "difficulty breathing",
-        "headache", "nausea", "vomiting", "dizziness", "fever",
-        "cough", "sore throat", "abdominal pain", "back pain",
-        "seizure", "bleeding", "rash", "fatigue",
-    ]
-    for kw in symptom_keywords:
-        if kw in lower:
-            symptoms.append(kw)
-
-    # Pain scale detection
-    for i in range(11):
-        if f"pain {i}" in lower or f"pain is {i}" in lower or f"pain level {i}" in lower:
-            pain_scale = i
-            break
-        if f"{i}/10" in lower or f"{i} out of 10" in lower:
-            pain_scale = i
-            break
-
-    # Mental status detection
-    if "confused" in lower or "confusion" in lower:
-        mental_status = "confused"
-    elif "unresponsive" in lower:
-        mental_status = "unresponsive"
-
-    return MedicalExtraction(
-        chief_complaint=text[:200],
-        symptoms=symptoms,
-        pain_scale=pain_scale,
-        mental_status=mental_status,
-    )
-
 
 def _generate_response(
     extraction: MedicalExtraction,
     assessment,
 ) -> str:
-    """Generate a simple assistant response. Replaced by LLM adapter in M5."""
+    """Generate a deterministic assistant response for text chat."""
     if assessment.escalate:
         return (
             "Based on what you've told me, this requires immediate medical attention. "

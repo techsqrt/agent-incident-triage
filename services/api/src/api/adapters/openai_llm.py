@@ -29,8 +29,8 @@ def extract_medical(
     """
     if not settings.openai_api_key:
         logger.warning("openai_api_key not set, using deterministic extraction")
-        from services.api.src.api.routes.triage import _extract_from_text
-        return _extract_from_text(patient_text)
+        from services.api.src.api.domains.medical.extract import extract_from_text
+        return extract_from_text(patient_text)
 
     import openai
     from services.api.src.api.domains.medical.prompts import EXTRACTION_SYSTEM_PROMPT

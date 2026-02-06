@@ -84,6 +84,7 @@ See `.env.example` for all configuration options.
 | `OPENAI_MODEL_STT`    | `gpt-4o-mini-transcribe`      | Speech-to-text model         |
 | `OPENAI_MODEL_TTS`    | `gpt-4o-mini-tts`             | Text-to-speech model         |
 | `ACTIVE_DOMAINS`       | `medical`                     | Comma-separated active list  |
+| `NEXT_PUBLIC_API_URL`  | `http://127.0.0.1:8000`      | API base URL (frontend)      |
 
 When `OPENAI_API_KEY` is not set, all adapters return stub responses for local development.
 

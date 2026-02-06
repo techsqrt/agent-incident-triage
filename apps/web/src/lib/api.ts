@@ -8,10 +8,20 @@ import type {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
+async function throwApiError(res: Response, fallback: string): Promise<never> {
+  try {
+    const body = await res.json();
+    throw new Error(body.detail || fallback);
+  } catch (err) {
+    if (err instanceof Error && err.message !== fallback) throw err;
+    throw new Error(fallback);
+  }
+}
+
 export async function fetchDomains(): Promise<DomainsResponse> {
   const res = await fetch(`${API_BASE}/api/triage/domains`);
   if (!res.ok) {
-    throw new Error(`Failed to fetch domains: ${res.status}`);
+    await throwApiError(res, `Failed to fetch domains: ${res.status}`);
   }
   return res.json();
 }
@@ -23,7 +33,7 @@ export async function createIncident(domain: string, mode: string = 'B'): Promis
     body: JSON.stringify({ domain, mode }),
   });
   if (!res.ok) {
-    throw new Error(`Failed to create incident: ${res.status}`);
+    await throwApiError(res, `Failed to create incident: ${res.status}`);
   }
   return res.json();
 }
@@ -31,7 +41,7 @@ export async function createIncident(domain: string, mode: string = 'B'): Promis
 export async function fetchIncident(id: string): Promise<Incident> {
   const res = await fetch(`${API_BASE}/api/triage/incidents/${id}`);
   if (!res.ok) {
-    throw new Error(`Failed to fetch incident: ${res.status}`);
+    await throwApiError(res, `Failed to fetch incident: ${res.status}`);
   }
   return res.json();
 }
@@ -43,7 +53,7 @@ export async function sendMessage(incidentId: string, content: string): Promise<
     body: JSON.stringify({ content }),
   });
   if (!res.ok) {
-    throw new Error(`Failed to send message: ${res.status}`);
+    await throwApiError(res, `Failed to send message: ${res.status}`);
   }
   return res.json();
 }
@@ -51,7 +61,7 @@ export async function sendMessage(incidentId: string, content: string): Promise<
 export async function fetchTimeline(incidentId: string): Promise<TimelineResponse> {
   const res = await fetch(`${API_BASE}/api/triage/incidents/${incidentId}/timeline`);
   if (!res.ok) {
-    throw new Error(`Failed to fetch timeline: ${res.status}`);
+    await throwApiError(res, `Failed to fetch timeline: ${res.status}`);
   }
   return res.json();
 }
@@ -65,7 +75,7 @@ export async function sendVoice(incidentId: string, audioBlob: Blob): Promise<Vo
     body: formData,
   });
   if (!res.ok) {
-    throw new Error(`Failed to send voice: ${res.status}`);
+    await throwApiError(res, `Failed to send voice: ${res.status}`);
   }
   return res.json();
 }
