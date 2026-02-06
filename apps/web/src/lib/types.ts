@@ -55,3 +55,9 @@ export interface VoiceResponse {
   audio_base64: string | null;
   assessment: Assessment | null;
 }
+
+export interface MessageWithAssessmentResponse {
+  message: Message;
+  assistant_message: Message;
+  assessment: Assessment | null;
+}
