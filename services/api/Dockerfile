@@ -28,8 +28,8 @@ COPY migrations/ ./services/api/migrations/
 # Set Python path to repo root equivalent
 ENV PYTHONPATH=/app
 
-# Expose port
-EXPOSE 8000
+# Expose port (Railway sets PORT dynamically)
+EXPOSE ${PORT:-8000}
 
-# Run the API
-CMD ["uvicorn", "services.api.src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the API using Railway's PORT env var
+CMD uvicorn services.api.src.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
