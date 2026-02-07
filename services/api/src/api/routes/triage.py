@@ -1,9 +1,10 @@
 """Triage API endpoints."""
 
 import logging
+import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from sqlalchemy.engine import Engine
 
 from services.api.src.api.core.feature_flags import ALL_DOMAINS, is_domain_active
@@ -264,9 +265,25 @@ def get_timeline(
 async def send_voice(
     incident_id: str,
     audio: UploadFile,
+    recaptcha_token: str = Form(""),
     engine: Engine = Depends(_engine),
 ) -> VoiceResponse:
     """Voice pipeline: STT → Extract → Rules → Generate → TTS."""
+    # Verify reCAPTCHA
+    recaptcha_secret = os.getenv("RECAPTCHA_SECRET_KEY", "")
+    if recaptcha_secret:
+        import httpx
+        resp = httpx.post(
+            "https://www.google.com/recaptcha/api/siteverify",
+            data={
+                "secret": recaptcha_secret,
+                "response": recaptcha_token,
+            },
+        )
+        result = resp.json()
+        if not result.get("success"):
+            raise HTTPException(403, "reCAPTCHA verification failed")
+
     incident_repo = IncidentRepository(engine)
     incident = incident_repo.get(incident_id)
     if not incident:

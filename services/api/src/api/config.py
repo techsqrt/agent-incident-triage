@@ -38,5 +38,8 @@ class Settings(BaseSettings):
     # CORS
     cors_origin: str = ""
 
+    # reCAPTCHA
+    recaptcha_secret_key: str = ""
+
 
 settings = Settings()
