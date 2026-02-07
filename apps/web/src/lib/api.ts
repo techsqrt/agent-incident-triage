@@ -66,9 +66,12 @@ export async function fetchTimeline(incidentId: string): Promise<TimelineRespons
   return res.json();
 }
 
-export async function sendVoice(incidentId: string, audioBlob: Blob): Promise<VoiceResponse> {
+export async function sendVoice(incidentId: string, audioBlob: Blob, recaptchaToken?: string): Promise<VoiceResponse> {
   const formData = new FormData();
   formData.append('audio', audioBlob, 'recording.webm');
+  if (recaptchaToken) {
+    formData.append('recaptcha_token', recaptchaToken);
+  }
 
   const res = await fetch(`${API_BASE}/api/triage/incidents/${incidentId}/voice`, {
     method: 'POST',

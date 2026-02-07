@@ -8,8 +8,9 @@ from sqlalchemy import create_engine, StaticPool
 
 from services.api.src.api.db.models import metadata
 
-# Disable migration runner during tests
+# Disable migration runner and reCAPTCHA during tests
 os.environ["RUN_MIGRATIONS"] = "false"
+os.environ["RECAPTCHA_SECRET_KEY"] = ""
 
 from services.api.src.api.main import app  # noqa: E402
 from services.api.src.api.routes import triage as triage_module  # noqa: E402
