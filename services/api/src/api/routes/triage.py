@@ -152,8 +152,8 @@ def create_incident(
         raise HTTPException(400, f"Unknown domain: {body.domain}")
     if not is_domain_active(body.domain):
         raise HTTPException(400, f"Domain '{body.domain}' is not active")
-    if body.mode not in ("A", "B"):
-        raise HTTPException(400, f"Invalid mode: {body.mode}")
+    if body.mode not in ("chat", "voice"):
+        raise HTTPException(400, f"Invalid mode: {body.mode}. Must be 'chat' or 'voice'")
 
     repo = IncidentRepository(engine)
     row = repo.create(domain=body.domain, mode=body.mode)

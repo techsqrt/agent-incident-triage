@@ -75,7 +75,7 @@ def engine():
 @pytest.fixture
 def incident_id(engine):
     repo = IncidentRepository(engine)
-    row = repo.create(domain="medical", mode="B")
+    row = repo.create(domain="medical", mode="chat")
     return row["id"]
 
 
@@ -204,7 +204,7 @@ class TestVoicePipeline:
     def test_pipeline_escalation_response_text(self, engine):
         """Escalated cases get a fixed response, not an LLM-generated one."""
         repo = IncidentRepository(engine)
-        row = repo.create(domain="medical", mode="B")
+        row = repo.create(domain="medical", mode="chat")
         iid = row["id"]
 
         def mock_extract_dying(text):
