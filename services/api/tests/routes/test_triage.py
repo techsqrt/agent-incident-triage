@@ -2,22 +2,9 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, StaticPool
 
-from services.api.src.api.db.models import metadata
 from services.api.src.api.main import app
 from services.api.src.api.routes import triage as triage_module
-
-
-@pytest.fixture
-def engine():
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    metadata.create_all(eng)
-    return eng
 
 
 @pytest.fixture
