@@ -24,6 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code - mirror repo structure for imports
 COPY src/ ./services/api/src/
 COPY migrations/ ./services/api/migrations/
+COPY entrypoint.sh ./entrypoint.sh
+
+# Make entrypoint executable
+RUN chmod +x ./entrypoint.sh
 
 # Set Python path to repo root equivalent
 ENV PYTHONPATH=/app
@@ -31,5 +35,5 @@ ENV PYTHONPATH=/app
 # Expose port (Railway sets PORT dynamically)
 EXPOSE ${PORT:-8000}
 
-# Run the API using Railway's PORT env var
-CMD uvicorn services.api.src.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Run migrations then start API
+CMD ["./entrypoint.sh"]
