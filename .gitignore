@@ -29,6 +29,7 @@ playwright-report/
 .vscode/
 *.swp
 *.swo
+CLAUDE.md
 
 # Environment
 .env
