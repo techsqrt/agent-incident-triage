@@ -4,9 +4,10 @@ import logging
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from sqlalchemy.engine import Engine
 
+from services.api.src.api.config import settings
 from services.api.src.api.core.feature_flags import ALL_DOMAINS, is_domain_active
 from services.api.src.api.core.redaction import redact_dict
 from services.api.src.api.db.engine import get_engine
@@ -15,6 +16,7 @@ from services.api.src.api.db.repository import (
     AuditEventRepository,
     IncidentRepository,
     MessageRepository,
+    VerifiedIPRepository,
 )
 from services.api.src.api.domains.medical.extract import extract_from_text
 from services.api.src.api.domains.medical.rules import assess
@@ -38,6 +40,55 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_client_ip(request: Request) -> str:
+    """Get client IP from request, handling proxies."""
+    # Check X-Forwarded-For header (set by proxies/load balancers)
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        # Take the first IP (original client)
+        return forwarded.split(",")[0].strip()
+    # Fall back to direct connection IP
+    return request.client.host if request.client else "unknown"
+
+
+def _verify_recaptcha(token: str | None, request: Request, engine: Engine) -> None:
+    """Verify reCAPTCHA token if secret key is configured. Caches verified IPs for 7 days."""
+    recaptcha_secret = settings.recaptcha_secret_key
+    if not recaptcha_secret:
+        return  # reCAPTCHA not configured, skip verification
+
+    client_ip = _get_client_ip(request)
+    ip_repo = VerifiedIPRepository(engine)
+
+    # Check if IP is already verified
+    if ip_repo.is_verified(client_ip):
+        logger.info("recaptcha_ip_cached", extra={"ip": client_ip})
+        return
+
+    if not token:
+        raise HTTPException(403, "reCAPTCHA token required")
+
+    import httpx
+    resp = httpx.post(
+        "https://www.google.com/recaptcha/api/siteverify",
+        data={
+            "secret": recaptcha_secret,
+            "response": token,
+        },
+    )
+    result = resp.json()
+    logger.info("recaptcha_google_response", extra={"ip": client_ip, "result": result})
+
+    if not result.get("success"):
+        error_codes = result.get("error-codes", [])
+        logger.warning("recaptcha_verification_failed", extra={"ip": client_ip, "errors": error_codes})
+        raise HTTPException(403, f"reCAPTCHA verification failed: {error_codes}")
+
+    # Store verified IP for 7 days
+    ip_repo.add(client_ip)
+    logger.info("recaptcha_ip_verified", extra={"ip": client_ip})
+
+
 def _engine() -> Engine:
     return get_engine()
 
@@ -45,6 +96,30 @@ def _engine() -> Engine:
 def _str_dt(dt) -> str:
     """Convert a datetime to ISO string."""
     return dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
+
+
+# ---------------------------------------------------------------------------
+# reCAPTCHA IP verification status
+# ---------------------------------------------------------------------------
+
+@router.get("/recaptcha/status")
+def check_recaptcha_status(
+    request: Request,
+    engine: Engine = Depends(_engine),
+) -> dict:
+    """Check if client IP is already verified (cached for 7 days)."""
+    recaptcha_secret = settings.recaptcha_secret_key
+    if not recaptcha_secret:
+        # reCAPTCHA not configured, no verification needed
+        logger.info("recaptcha_status_no_secret")
+        return {"verified": True, "required": False}
+
+    client_ip = _get_client_ip(request)
+    ip_repo = VerifiedIPRepository(engine)
+    is_verified = ip_repo.is_verified(client_ip)
+    logger.info("recaptcha_status_check", extra={"ip": client_ip, "verified": is_verified})
+
+    return {"verified": is_verified, "required": True}
 
 
 # ---------------------------------------------------------------------------
@@ -129,9 +204,12 @@ def get_incident(
 def send_message(
     incident_id: str,
     body: SendMessageRequest,
+    request: Request,
     engine: Engine = Depends(_engine),
 ) -> MessageWithAssessmentResponse:
     """Send a text message, run extraction + rules, return assistant response."""
+    _verify_recaptcha(body.recaptcha_token, request, engine)
+
     incident_repo = IncidentRepository(engine)
     incident = incident_repo.get(incident_id)
     if not incident:
@@ -264,25 +342,13 @@ def get_timeline(
 @router.post("/incidents/{incident_id}/voice", response_model=VoiceResponse)
 async def send_voice(
     incident_id: str,
+    request: Request,
     audio: UploadFile,
     recaptcha_token: str = Form(""),
     engine: Engine = Depends(_engine),
 ) -> VoiceResponse:
     """Voice pipeline: STT → Extract → Rules → Generate → TTS."""
-    # Verify reCAPTCHA
-    recaptcha_secret = os.getenv("RECAPTCHA_SECRET_KEY", "")
-    if recaptcha_secret:
-        import httpx
-        resp = httpx.post(
-            "https://www.google.com/recaptcha/api/siteverify",
-            data={
-                "secret": recaptcha_secret,
-                "response": recaptcha_token,
-            },
-        )
-        result = resp.json()
-        if not result.get("success"):
-            raise HTTPException(403, "reCAPTCHA verification failed")
+    _verify_recaptcha(recaptcha_token or None, request, engine)
 
     incident_repo = IncidentRepository(engine)
     incident = incident_repo.get(incident_id)

@@ -14,6 +14,7 @@ class CreateIncidentRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str
+    recaptcha_token: str | None = None
 
 
 # -- Responses ---------------------------------------------------------------

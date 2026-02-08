@@ -98,3 +98,13 @@ triage_crypto_meta = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("ix_crypto_meta_incident", "incident_id"),
 )
+
+# Verified IPs - cache reCAPTCHA verification for 7 days
+verified_ips = Table(
+    "verified_ips",
+    metadata,
+    Column("ip", String(45), primary_key=True),  # IPv6 max length is 45
+    Column("verified_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Index("ix_verified_ips_expires", "expires_at"),
+)

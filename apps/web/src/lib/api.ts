@@ -26,6 +26,15 @@ export async function fetchDomains(): Promise<DomainsResponse> {
   return res.json();
 }
 
+export async function checkRecaptchaStatus(): Promise<{ verified: boolean; required: boolean }> {
+  const res = await fetch(`${API_BASE}/api/triage/recaptcha/status`);
+  if (!res.ok) {
+    // If check fails, assume verification is required
+    return { verified: false, required: true };
+  }
+  return res.json();
+}
+
 export async function createIncident(domain: string, mode: string = 'B'): Promise<Incident> {
   const res = await fetch(`${API_BASE}/api/triage/incidents`, {
     method: 'POST',
@@ -46,11 +55,11 @@ export async function fetchIncident(id: string): Promise<Incident> {
   return res.json();
 }
 
-export async function sendMessage(incidentId: string, content: string): Promise<MessageWithAssessmentResponse> {
+export async function sendMessage(incidentId: string, content: string, recaptchaToken?: string): Promise<MessageWithAssessmentResponse> {
   const res = await fetch(`${API_BASE}/api/triage/incidents/${incidentId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, recaptcha_token: recaptchaToken }),
   });
   if (!res.ok) {
     await throwApiError(res, `Failed to send message: ${res.status}`);
