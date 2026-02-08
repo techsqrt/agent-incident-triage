@@ -14,6 +14,10 @@ def get_engine(database_url: str | None = None) -> Engine:
 
     url = database_url or settings.database_url
 
+    # Railway uses postgres:// but SQLAlchemy 2.0+ needs postgresql://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+
     if _engine is None or database_url is not None:
         connect_args = {}
         if url.startswith("sqlite"):
