@@ -74,7 +74,7 @@ export default function IncidentDetailPage() {
             Incident {incidentId.slice(0, 8)}
           </h1>
           <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0' }}>
-            {incident.domain} | {incident.mode === 'B' ? 'Modular Pipeline' : 'Realtime'} |{' '}
+            {incident.domain} | {incident.mode === 'chat' ? 'Chat' : 'Voice'} |{' '}
             <span
               style={{
                 color: incident.status === 'ESCALATED' ? '#c0392b' : '#333',
