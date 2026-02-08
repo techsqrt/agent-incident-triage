@@ -190,17 +190,31 @@ class VerifiedIPRepository:
 
     def __init__(self, engine: Engine):
         self.engine = engine
+        self._table_ensured = False
+
+    def _ensure_table(self) -> None:
+        """Create verified_ips table if it doesn't exist."""
+        if self._table_ensured:
+            return
+        from sqlalchemy import text
+        with self.engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS verified_ips (
+                    ip TEXT PRIMARY KEY,
+                    verified_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_verified_ips_expires ON verified_ips(expires_at)
+            """))
+        self._table_ensured = True
 
     def is_verified(self, ip: str) -> bool:
         """Check if IP is verified and not expired."""
+        self._ensure_table()
         now = _now()
         with self.engine.connect() as conn:
-            # First check: count all rows
-            from sqlalchemy import func
-            count_result = conn.execute(select(func.count()).select_from(verified_ips))
-            total_count = count_result.scalar()
-
-            # Then check for this specific IP
             result = conn.execute(
                 select(verified_ips).where(
                     verified_ips.c.ip == ip,
@@ -208,13 +222,11 @@ class VerifiedIPRepository:
                 )
             )
             row = result.first()
-            is_valid = row is not None
-
-            print(f"[DEBUG] is_verified: ip={ip}, total_rows={total_count}, found={is_valid}, now={now}, db={self.engine.url}")
-            return is_valid
+            return row is not None
 
     def add(self, ip: str) -> None:
         """Add or update verified IP with 7 day expiry."""
+        self._ensure_table()
         now = _now()
         expires = now + timedelta(days=self.VERIFICATION_DAYS)
         with self.engine.begin() as conn:
@@ -228,6 +240,7 @@ class VerifiedIPRepository:
 
     def cleanup_expired(self) -> int:
         """Remove expired entries. Returns count deleted."""
+        self._ensure_table()
         now = _now()
         with self.engine.begin() as conn:
             result = conn.execute(
