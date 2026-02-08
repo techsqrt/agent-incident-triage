@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from services.api.src.api.domains.schemas import BaseAssessment, BaseExtraction, BaseRedFlag
 
 
-class VitalSigns(BaseModel):
+class VitalSigns(BaseExtraction):
     """Patient vital signs extracted from conversation."""
 
     heart_rate: int | None = Field(None, ge=0, le=300, description="BPM")
@@ -16,7 +18,7 @@ class VitalSigns(BaseModel):
     oxygen_saturation: int | None = Field(None, ge=0, le=100)
 
 
-class MedicalExtraction(BaseModel):
+class MedicalExtraction(BaseExtraction):
     """Structured extraction from patient conversation via LLM."""
 
     chief_complaint: str = Field("", description="Primary reason for visit")
@@ -30,18 +32,14 @@ class MedicalExtraction(BaseModel):
     mental_status: str = Field("alert", description="alert|confused|unresponsive")
 
 
-class RedFlag(BaseModel):
-    """A detected red-flag condition."""
+class RedFlag(BaseRedFlag):
+    """A detected medical red-flag condition."""
 
-    name: str
-    reason: str
+    pass
 
 
-class MedicalAssessment(BaseModel):
+class MedicalAssessment(BaseAssessment):
     """Deterministic triage assessment result."""
 
     acuity: int = Field(..., ge=1, le=5, description="ESI level 1-5")
-    escalate: bool = False
     red_flags: list[RedFlag] = Field(default_factory=list)
-    disposition: str = Field("continue", description="continue|escalate|discharge")
-    summary: str = ""
