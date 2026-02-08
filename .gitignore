@@ -50,3 +50,6 @@ local.db
 
 # Build artifacts
 apps/web/tsconfig.tsbuildinfo
+
+# Claude Code config
+CLAUDE.md
