@@ -1,23 +1,13 @@
-"""Tests for triage repositories using in-memory SQLite."""
+"""Tests for triage repositories using PostgreSQL."""
 
 import pytest
-from sqlalchemy import create_engine
 
-from services.api.src.api.db.models import metadata
 from services.api.src.api.db.repository import (
     IncidentRepository,
     MessageRepository,
     AssessmentRepository,
     AuditEventRepository,
 )
-
-
-@pytest.fixture
-def engine():
-    """Create a fresh in-memory SQLite database for each test."""
-    eng = create_engine("sqlite:///:memory:")
-    metadata.create_all(eng)
-    return eng
 
 
 @pytest.fixture
@@ -156,6 +146,12 @@ class TestIncidentRepository:
         # Filter by both
         open_sre = incident_repo.list_all(domain="sre", status="OPEN")
         assert len(open_sre) == 1
+
+    def test_mode_constraint_rejects_invalid(self, incident_repo):
+        """PostgreSQL CHECK constraint rejects invalid mode values."""
+        with pytest.raises(Exception) as exc_info:
+            incident_repo.create(domain="medical", mode="invalid")
+        assert "violates check constraint" in str(exc_info.value).lower()
 
 
 class TestMessageRepository:

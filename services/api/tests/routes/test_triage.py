@@ -1,23 +1,10 @@
-"""Tests for triage API endpoints using FastAPI TestClient."""
+"""Tests for triage API endpoints using PostgreSQL."""
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, StaticPool
 
-from services.api.src.api.db.models import metadata
 from services.api.src.api.main import app
 from services.api.src.api.routes import triage as triage_module
-
-
-@pytest.fixture
-def engine():
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    metadata.create_all(eng)
-    return eng
 
 
 @pytest.fixture
@@ -80,6 +67,7 @@ class TestCreateIncident:
             "/api/triage/incidents", json={"domain": "medical", "mode": "X"}
         )
         assert res.status_code == 400
+        assert "chat" in res.json()["detail"] or "voice" in res.json()["detail"]
 
 
 class TestGetIncident:

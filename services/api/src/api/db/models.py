@@ -1,6 +1,7 @@
 """SQLAlchemy table definitions for triage platform."""
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     Index,
@@ -31,6 +32,11 @@ triage_incidents = Table(
     # History: full interaction log for replay/explain
     # {"interactions": [{type, ts, ...}, ...]}
     Column("history", JSON, nullable=False, server_default='{"interactions": []}'),
+    # Constraints
+    CheckConstraint("domain IN ('medical', 'sre', 'crypto')", name="ck_incidents_domain"),
+    CheckConstraint("status IN ('OPEN', 'TRIAGE_READY', 'ESCALATED', 'CLOSED')", name="ck_incidents_status"),
+    CheckConstraint("mode IN ('chat', 'voice')", name="ck_incidents_mode"),
+    # Indexes
     Index("ix_incidents_domain", "domain"),
     Index("ix_incidents_status", "status"),
     Index("ix_incidents_created", "created_at"),

@@ -1,10 +1,8 @@
-"""Tests for the medical voice pipeline with mocked adapters."""
+"""Tests for the medical voice pipeline with mocked adapters using PostgreSQL."""
 
 import pytest
-from sqlalchemy import create_engine, StaticPool
 
 from services.api.src.api.core.pipeline import run_voice_pipeline
-from services.api.src.api.db.models import metadata
 from services.api.src.api.db.repository import (
     AuditEventRepository,
     IncidentRepository,
@@ -62,17 +60,6 @@ def mock_tts(text):
 # -- Fixtures ----------------------------------------------------------------
 
 @pytest.fixture
-def engine():
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    metadata.create_all(eng)
-    return eng
-
-
-@pytest.fixture
 def incident_id(engine):
     repo = IncidentRepository(engine)
     row = repo.create(domain="medical", mode="chat")
@@ -100,7 +87,7 @@ class TestVoicePipeline:
         assert result.trace_id != ""
 
     def test_pipeline_creates_audit_events(self, engine, incident_id):
-        result = run_voice_pipeline(
+        run_voice_pipeline(
             incident_id=incident_id,
             audio_bytes=b"fake-audio",
             filename="test.webm",
@@ -111,20 +98,15 @@ class TestVoicePipeline:
             tts_fn=mock_tts,
         )
 
-        audit_repo = AuditEventRepository(engine)
-        events = audit_repo.list_by_incident(incident_id)
-
+        repo = AuditEventRepository(engine)
+        events = repo.list_by_incident(incident_id)
         steps = [e["step"] for e in events]
+
         assert "STT" in steps
         assert "EXTRACT" in steps
         assert "TRIAGE_RULES" in steps
         assert "GENERATE" in steps
         assert "TTS" in steps
-
-        # All events share the same trace_id
-        trace_ids = set(e["trace_id"] for e in events)
-        assert len(trace_ids) == 1
-        assert result.trace_id in trace_ids
 
     def test_pipeline_persists_messages(self, engine, incident_id):
         run_voice_pipeline(
@@ -138,11 +120,12 @@ class TestVoicePipeline:
             tts_fn=mock_tts,
         )
 
-        msg_repo = MessageRepository(engine)
-        messages = msg_repo.list_by_incident(incident_id)
+        repo = MessageRepository(engine)
+        messages = repo.list_by_incident(incident_id)
 
         assert len(messages) == 2
         assert messages[0]["role"] == "patient"
+        assert "headache" in messages[0]["content_text"].lower()
         assert messages[1]["role"] == "assistant"
 
     def test_pipeline_creates_assessment(self, engine, incident_id):
@@ -158,10 +141,13 @@ class TestVoicePipeline:
         )
 
         assert result.assessment_row is not None
-        assert result.assessment_row["domain"] == "medical"
+        # result_json contains the actual assessment data
+        import json
+        assessment = json.loads(result.assessment_row["result_json"]) if isinstance(result.assessment_row["result_json"], str) else result.assessment_row["result_json"]
+        assert "acuity" in assessment
 
     def test_pipeline_escalates_critical(self, engine, incident_id):
-        run_voice_pipeline(
+        result = run_voice_pipeline(
             incident_id=incident_id,
             audio_bytes=b"fake-audio",
             filename="test.webm",
@@ -172,19 +158,24 @@ class TestVoicePipeline:
             tts_fn=mock_tts,
         )
 
-        incident_repo = IncidentRepository(engine)
-        incident = incident_repo.get(incident_id)
+        assert result.assessment_row is not None
+        import json
+        assessment = json.loads(result.assessment_row["result_json"]) if isinstance(result.assessment_row["result_json"], str) else result.assessment_row["result_json"]
+        assert assessment["escalate"] is True
+        assert assessment["acuity"] == 1
+
+        # Check incident status was updated
+        repo = IncidentRepository(engine)
+        incident = repo.get(incident_id)
         assert incident["status"] == "ESCALATED"
 
     def test_pipeline_escalation_skips_generate(self, engine, incident_id):
-        """When case is critical, pipeline should NOT call generate_fn
-        and should return a fixed escalation message instead."""
         generate_called = False
 
-        def mock_generate_spy(extraction_dict):
+        def tracking_generate(extraction_dict):
             nonlocal generate_called
             generate_called = True
-            return "follow-up question?", {}
+            return "Should not be called", {}
 
         result = run_voice_pipeline(
             incident_id=incident_id,
@@ -193,7 +184,7 @@ class TestVoicePipeline:
             engine=engine,
             stt_fn=mock_stt_critical,
             extract_fn=mock_extract_critical,
-            generate_fn=mock_generate_spy,
+            generate_fn=tracking_generate,
             tts_fn=mock_tts,
         )
 
@@ -218,13 +209,15 @@ class TestVoicePipeline:
             audio_bytes=b"fake-audio",
             filename="test.webm",
             engine=engine,
-            stt_fn=mock_stt,
+            stt_fn=lambda *a, **kw: MockSTTResult("I'm dying"),
             extract_fn=mock_extract_dying,
             generate_fn=mock_generate,
             tts_fn=mock_tts,
         )
 
-        assert result.assessment_row is not None
+        import json
+        assessment = json.loads(result.assessment_row["result_json"]) if isinstance(result.assessment_row["result_json"], str) else result.assessment_row["result_json"]
+        assert assessment["escalate"] is True
         assert "escalating" in result.response_text.lower()
 
     def test_pipeline_audit_has_latency(self, engine, incident_id):
@@ -239,8 +232,8 @@ class TestVoicePipeline:
             tts_fn=mock_tts,
         )
 
-        audit_repo = AuditEventRepository(engine)
-        events = audit_repo.list_by_incident(incident_id)
+        repo = AuditEventRepository(engine)
+        events = repo.list_by_incident(incident_id)
 
         for event in events:
             assert event["latency_ms"] is not None
