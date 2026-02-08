@@ -49,7 +49,7 @@ jobs:
     name: Build & Test API Docker Image
     runs-on: ubuntu-latest
     needs: test
-    continue-on-error: true  # Don't fail PR on Docker issues
+    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -101,3 +101,70 @@ jobs:
       - name: Build frontend
         working-directory: apps/web
         run: pnpm build
+
+  deploy-railway:
+    name: Deploy API to Railway
+    runs-on: ubuntu-latest
+    needs: [test, build-api-image]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service api --detach
+        working-directory: services/api
+
+      - name: Run database migrations
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          # Trigger migration by hitting a health endpoint (migrations run on startup)
+          railway run --service api -- echo "Migrations run automatically on startup"
+
+  deploy-vercel:
+    name: Deploy Frontend to Vercel
+    runs-on: ubuntu-latest
+    needs: [test, build-frontend]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Pull Vercel environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --token=$VERCEL_TOKEN
+        working-directory: apps/web
+
+      - name: Build for production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --token=$VERCEL_TOKEN
+        working-directory: apps/web
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+        working-directory: apps/web
