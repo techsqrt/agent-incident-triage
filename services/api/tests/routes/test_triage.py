@@ -56,15 +56,15 @@ class TestCreateIncident:
         data = res.json()
         assert data["domain"] == "medical"
         assert data["status"] == "OPEN"
-        assert data["mode"] == "B"
+        assert data["mode"] == "chat"
         assert "id" in data
 
-    def test_create_incident_with_mode_a(self, client):
+    def test_create_incident_with_voice_mode(self, client):
         res = client.post(
-            "/api/triage/incidents", json={"domain": "medical", "mode": "A"}
+            "/api/triage/incidents", json={"domain": "medical", "mode": "voice"}
         )
         assert res.status_code == 200
-        assert res.json()["mode"] == "A"
+        assert res.json()["mode"] == "voice"
 
     def test_create_incident_inactive_domain(self, client):
         res = client.post("/api/triage/incidents", json={"domain": "sre"})
