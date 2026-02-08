@@ -99,6 +99,41 @@ def _str_dt(dt) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Debug endpoint (temporary - for diagnosing production issues)
+# ---------------------------------------------------------------------------
+
+@router.get("/debug/db")
+def debug_db(engine: Engine = Depends(_engine)) -> dict:
+    """Debug endpoint to check database status."""
+    from sqlalchemy import text, inspect
+    result = {"tables": [], "errors": []}
+    try:
+        inspector = inspect(engine)
+        result["tables"] = inspector.get_table_names()
+        result["db_url_masked"] = str(engine.url).split("@")[-1] if "@" in str(engine.url) else "local"
+    except Exception as e:
+        result["errors"].append(f"inspect: {e}")
+
+    # Test verified_ips
+    try:
+        with engine.connect() as conn:
+            r = conn.execute(text("SELECT COUNT(*) FROM verified_ips"))
+            result["verified_ips_count"] = r.scalar()
+    except Exception as e:
+        result["errors"].append(f"verified_ips: {e}")
+
+    # Test triage_incidents
+    try:
+        with engine.connect() as conn:
+            r = conn.execute(text("SELECT COUNT(*) FROM triage_incidents"))
+            result["incidents_count"] = r.scalar()
+    except Exception as e:
+        result["errors"].append(f"triage_incidents: {e}")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # reCAPTCHA IP verification status
 # ---------------------------------------------------------------------------
 
