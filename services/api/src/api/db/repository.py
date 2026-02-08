@@ -197,14 +197,28 @@ class VerifiedIPRepository:
         if self._table_ensured:
             return
         from sqlalchemy import text
-        with self.engine.begin() as conn:
-            conn.execute(text("""
+
+        # Use dialect-appropriate SQL
+        is_sqlite = self.engine.dialect.name == "sqlite"
+        if is_sqlite:
+            create_sql = """
+                CREATE TABLE IF NOT EXISTS verified_ips (
+                    ip TEXT PRIMARY KEY,
+                    verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TEXT NOT NULL
+                )
+            """
+        else:
+            create_sql = """
                 CREATE TABLE IF NOT EXISTS verified_ips (
                     ip TEXT PRIMARY KEY,
                     verified_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
                 )
-            """))
+            """
+
+        with self.engine.begin() as conn:
+            conn.execute(text(create_sql))
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_verified_ips_expires ON verified_ips(expires_at)
             """))
