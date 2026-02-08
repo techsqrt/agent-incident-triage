@@ -32,8 +32,28 @@ class IncidentRepository:
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def create(self, domain: str, mode: str = "B") -> dict:
+    def create(
+        self,
+        domain: str,
+        mode: str = "chat",
+        diagnostic: dict | None = None,
+        client_ip: str | None = None,
+        client_ua: str | None = None,
+    ) -> dict:
         now = _now()
+        # Initial history with system_created event
+        history = {
+            "interactions": [
+                {
+                    "type": "system_created",
+                    "ts": now.isoformat(),
+                    "domain": domain,
+                    "mode": mode,
+                    "client_ip": client_ip,
+                    "client_ua": client_ua,
+                }
+            ]
+        }
         row = {
             "id": _new_id(),
             "domain": domain,
@@ -41,9 +61,15 @@ class IncidentRepository:
             "mode": mode,
             "created_at": now,
             "updated_at": now,
+            "ts_escalated": None,
+            "diagnostic": json.dumps(diagnostic or {}),
+            "history": json.dumps(history),
         }
         with self.engine.begin() as conn:
             conn.execute(triage_incidents.insert().values(row))
+        # Return with parsed JSON
+        row["diagnostic"] = diagnostic or {}
+        row["history"] = history
         return row
 
     def get(self, incident_id: str) -> dict | None:
@@ -52,7 +78,12 @@ class IncidentRepository:
                 select(triage_incidents).where(triage_incidents.c.id == incident_id)
             )
             row = result.mappings().first()
-            return dict(row) if row else None
+            if row:
+                d = dict(row)
+                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
+                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                return d
+            return None
 
     def update_status(self, incident_id: str, status: str) -> None:
         with self.engine.begin() as conn:
@@ -60,6 +91,56 @@ class IncidentRepository:
                 update(triage_incidents)
                 .where(triage_incidents.c.id == incident_id)
                 .values(status=status, updated_at=_now())
+            )
+
+    def set_escalated(self, incident_id: str) -> None:
+        """Mark incident as escalated with timestamp."""
+        now = _now()
+        with self.engine.begin() as conn:
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(status="ESCALATED", ts_escalated=now, updated_at=now)
+            )
+
+    def append_interaction(self, incident_id: str, interaction: dict) -> None:
+        """Append an interaction to the incident history."""
+        with self.engine.begin() as conn:
+            # Get current history
+            result = conn.execute(
+                select(triage_incidents.c.history).where(
+                    triage_incidents.c.id == incident_id
+                )
+            )
+            row = result.first()
+            if not row:
+                return
+            history = json.loads(row[0]) if row[0] else {"interactions": []}
+            history["interactions"].append(interaction)
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(history=json.dumps(history), updated_at=_now())
+            )
+
+    def update_diagnostic(self, incident_id: str, diagnostic_update: dict) -> None:
+        """Merge updates into incident diagnostic."""
+        with self.engine.begin() as conn:
+            # Get current diagnostic
+            result = conn.execute(
+                select(triage_incidents.c.diagnostic).where(
+                    triage_incidents.c.id == incident_id
+                )
+            )
+            row = result.first()
+            if not row:
+                return
+            diagnostic = json.loads(row[0]) if row[0] else {}
+            diagnostic.update(diagnostic_update)
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(diagnostic=json.dumps(diagnostic), updated_at=_now())
             )
 
     def list_by_domain(self, domain: str, limit: int = 50) -> list[dict]:
@@ -70,7 +151,39 @@ class IncidentRepository:
                 .order_by(triage_incidents.c.created_at.desc())
                 .limit(limit)
             )
-            return [dict(row) for row in result.mappings()]
+            rows = []
+            for row in result.mappings():
+                d = dict(row)
+                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
+                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                rows.append(d)
+            return rows
+
+    def list_all(
+        self,
+        domain: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List incidents with optional filters."""
+        with self.engine.connect() as conn:
+            query = select(triage_incidents)
+            if domain:
+                query = query.where(triage_incidents.c.domain == domain)
+            if status:
+                query = query.where(triage_incidents.c.status == status)
+            query = query.order_by(triage_incidents.c.created_at.desc())
+            query = query.limit(limit).offset(offset)
+
+            result = conn.execute(query)
+            rows = []
+            for row in result.mappings():
+                d = dict(row)
+                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
+                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                rows.append(d)
+            return rows
 
 
 class MessageRepository:
