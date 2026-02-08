@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     Index,
     Integer,
+    JSON,
     MetaData,
     Float,
     String,
@@ -19,11 +20,17 @@ triage_incidents = Table(
     "triage_incidents",
     metadata,
     Column("id", String, primary_key=True),
-    Column("domain", String(32), nullable=False),
+    Column("domain", String(32), nullable=False),  # medical, sre, crypto
     Column("status", String(32), nullable=False, server_default="OPEN"),
-    Column("mode", String(1), nullable=False, server_default="B"),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("mode", String(8), nullable=False, server_default="chat"),  # chat, voice
+    Column("created_at", DateTime(timezone=True), nullable=False),  # ts_start
+    Column("updated_at", DateTime(timezone=True), nullable=False),  # ts_last_msg
+    Column("ts_escalated", DateTime(timezone=True), nullable=True),
+    # Diagnostic: model info, latency, tokens, client info, feature flags
+    Column("diagnostic", JSON, nullable=False, server_default="{}"),
+    # History: full interaction log for replay/explain
+    # {"interactions": [{type, ts, ...}, ...]}
+    Column("history", JSON, nullable=False, server_default='{"interactions": []}'),
     Index("ix_incidents_domain", "domain"),
     Index("ix_incidents_status", "status"),
     Index("ix_incidents_created", "created_at"),
