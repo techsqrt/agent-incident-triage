@@ -7,11 +7,14 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.engine import Engine
 
+from datetime import timedelta
+
 from services.api.src.api.db.models import (
     triage_incidents,
     triage_messages,
     triage_assessments,
     triage_audit_events,
+    verified_ips,
 )
 
 
@@ -178,3 +181,56 @@ class AuditEventRepository:
                     d["token_usage_json"] = json.loads(d["token_usage_json"])
                 rows.append(d)
             return rows
+
+
+class VerifiedIPRepository:
+    """Cache for verified reCAPTCHA IPs (7 day TTL)."""
+
+    VERIFICATION_DAYS = 7
+
+    def __init__(self, engine: Engine):
+        self.engine = engine
+
+    def is_verified(self, ip: str) -> bool:
+        """Check if IP is verified and not expired."""
+        now = _now()
+        with self.engine.connect() as conn:
+            # First check: count all rows
+            from sqlalchemy import func
+            count_result = conn.execute(select(func.count()).select_from(verified_ips))
+            total_count = count_result.scalar()
+
+            # Then check for this specific IP
+            result = conn.execute(
+                select(verified_ips).where(
+                    verified_ips.c.ip == ip,
+                    verified_ips.c.expires_at > now,
+                )
+            )
+            row = result.first()
+            is_valid = row is not None
+
+            print(f"[DEBUG] is_verified: ip={ip}, total_rows={total_count}, found={is_valid}, now={now}, db={self.engine.url}")
+            return is_valid
+
+    def add(self, ip: str) -> None:
+        """Add or update verified IP with 7 day expiry."""
+        now = _now()
+        expires = now + timedelta(days=self.VERIFICATION_DAYS)
+        with self.engine.begin() as conn:
+            # Upsert: delete old entry if exists, then insert
+            conn.execute(verified_ips.delete().where(verified_ips.c.ip == ip))
+            conn.execute(verified_ips.insert().values(
+                ip=ip,
+                verified_at=now,
+                expires_at=expires,
+            ))
+
+    def cleanup_expired(self) -> int:
+        """Remove expired entries. Returns count deleted."""
+        now = _now()
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                verified_ips.delete().where(verified_ips.c.expires_at <= now)
+            )
+            return result.rowcount

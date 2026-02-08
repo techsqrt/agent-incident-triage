@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { sendVoice } from '@/lib/api';
+import { sendVoice, checkRecaptchaStatus } from '@/lib/api';
 import type { Assessment } from '@/lib/types';
 
 declare global {
   interface Window {
     grecaptcha?: {
+      ready: (callback: () => void) => void;
       render: (container: string | HTMLElement, params: {
         sitekey: string;
         callback: (token: string) => void;
@@ -33,7 +34,11 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
-  const [recaptchaReady, setRecaptchaReady] = useState(!RECAPTCHA_SITE_KEY);
+  const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const [recaptchaError, setRecaptchaError] = useState<string | null>(null);
+  const [ipVerified, setIpVerified] = useState(false);
+  const [recaptchaRequired, setRecaptchaRequired] = useState(true);
+  const [statusChecked, setStatusChecked] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,47 +48,126 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
   const MAX_RECORDING_SECONDS = 60;
 
   const renderRecaptcha = useCallback(() => {
+    console.log('renderRecaptcha called:', {
+      hasGrecaptcha: !!window.grecaptcha,
+      hasContainer: !!recaptchaContainerRef.current,
+      widgetId: recaptchaWidgetRef.current,
+    });
+
     if (
       window.grecaptcha &&
       recaptchaContainerRef.current &&
       recaptchaWidgetRef.current === null
     ) {
-      recaptchaWidgetRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
-        sitekey: RECAPTCHA_SITE_KEY,
-        callback: (token: string) => {
-          setRecaptchaToken(token);
-        },
-        'expired-callback': () => {
-          setRecaptchaToken(null);
-        },
-      });
-      setRecaptchaReady(true);
+      try {
+        console.log('Rendering reCAPTCHA widget...');
+        recaptchaWidgetRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
+          sitekey: RECAPTCHA_SITE_KEY,
+          callback: (token: string) => {
+            console.log('reCAPTCHA verified, token received');
+            setRecaptchaToken(token);
+            setRecaptchaError(null);
+          },
+          'expired-callback': () => {
+            console.log('reCAPTCHA token expired');
+            setRecaptchaToken(null);
+          },
+        });
+        console.log('reCAPTCHA widget rendered successfully');
+        setRecaptchaReady(true);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load reCAPTCHA';
+        setRecaptchaError(message);
+        console.error('reCAPTCHA render error:', err);
+      }
     }
   }, []);
 
+  // Check if IP is already verified on mount
   useEffect(() => {
-    if (!RECAPTCHA_SITE_KEY) return;
+    checkRecaptchaStatus()
+      .then(({ verified, required }) => {
+        console.log('reCAPTCHA status:', { verified, required });
+        setIpVerified(verified);
+        setRecaptchaRequired(required);
+        if (verified || !required) {
+          setRecaptchaReady(true); // No need to show captcha
+        }
+        setStatusChecked(true);
+      })
+      .catch((err) => {
+        console.error('reCAPTCHA status check failed:', err);
+        setRecaptchaError(`Failed to check verification status: ${err.message || 'Unknown error'}`);
+        setRecaptchaRequired(true);
+        setStatusChecked(true);
+      });
+  }, []);
 
-    // If script already loaded
-    if (window.grecaptcha) {
-      renderRecaptcha();
+  useEffect(() => {
+    // Wait for status check to complete
+    if (!statusChecked) {
       return;
     }
 
-    window.onRecaptchaLoad = () => {
-      renderRecaptcha();
+    // Skip if IP already verified or captcha not required
+    if (ipVerified || !recaptchaRequired) {
+      console.log('reCAPTCHA skipped:', { ipVerified, recaptchaRequired });
+      return;
+    }
+
+    if (!RECAPTCHA_SITE_KEY) {
+      setRecaptchaError('reCAPTCHA not configured: NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing');
+      return;
+    }
+
+    console.log('Loading reCAPTCHA widget...');
+
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let pollId: ReturnType<typeof setInterval>;
+
+    // Timeout after 2 seconds
+    timeoutId = setTimeout(() => {
+      if (!recaptchaReady) {
+        setRecaptchaError('reCAPTCHA failed to load (timeout). You can still use the app.');
+      }
+    }, 2000);
+
+    const tryRender = () => {
+      // Poll for grecaptcha.render to be available
+      pollId = setInterval(() => {
+        if (window.grecaptcha?.render && typeof window.grecaptcha.render === 'function') {
+          clearInterval(pollId);
+          clearTimeout(timeoutId);
+          renderRecaptcha();
+        }
+      }, 100);
     };
+
+    // If script already loaded
+    const existingScript = document.querySelector('script[src*="recaptcha/api.js"]');
+    if (existingScript) {
+      tryRender();
+      return;
+    }
+
+    window.onRecaptchaLoad = tryRender;
 
     const script = document.createElement('script');
     script.src = 'https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoad&render=explicit';
     script.async = true;
     script.defer = true;
+    script.onerror = () => {
+      clearTimeout(timeoutId);
+      setRecaptchaError('Failed to load reCAPTCHA script');
+    };
     document.head.appendChild(script);
 
     return () => {
       window.onRecaptchaLoad = undefined;
+      clearTimeout(timeoutId);
+      clearInterval(pollId);
     };
-  }, [renderRecaptcha]);
+  }, [renderRecaptcha, recaptchaReady, ipVerified, recaptchaRequired, statusChecked]);
 
   async function startRecording() {
     setError(null);
@@ -146,6 +230,11 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
       if (res.assessment && onAssessment) {
         onAssessment(res.assessment);
       }
+
+      // Backend verified the token and saved our IP - mark as verified
+      if (recaptchaToken) {
+        setIpVerified(true);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Voice processing failed');
     } finally {
@@ -158,11 +247,28 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
     }
   }
 
-  const canRecord = !RECAPTCHA_SITE_KEY || recaptchaToken !== null;
+  // Allow recording if: IP verified, captcha token obtained, captcha failed/loading, or no captcha required
+  const canRecord = ipVerified || recaptchaToken !== null || recaptchaError !== null || !recaptchaRequired || !statusChecked;
 
   return (
     <div>
-      {RECAPTCHA_SITE_KEY && (
+      {recaptchaError && (
+        <div
+          style={{
+            padding: '12px',
+            marginBottom: '16px',
+            background: '#fff3cd',
+            border: '1px solid #ffc107',
+            borderRadius: '6px',
+            fontSize: '13px',
+            color: '#856404',
+          }}
+        >
+          <strong>reCAPTCHA issue:</strong> {recaptchaError}
+        </div>
+      )}
+
+      {statusChecked && RECAPTCHA_SITE_KEY && !recaptchaError && !ipVerified && recaptchaRequired && (
         <div style={{ marginBottom: '16px' }}>
           <div ref={recaptchaContainerRef} />
           {!recaptchaReady && (
