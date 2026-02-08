@@ -1,23 +1,13 @@
-"""Tests for triage repositories using in-memory SQLite."""
+"""Tests for triage repositories using PostgreSQL."""
 
 import pytest
-from sqlalchemy import create_engine
 
-from services.api.src.api.db.models import metadata
 from services.api.src.api.db.repository import (
     IncidentRepository,
     MessageRepository,
     AssessmentRepository,
     AuditEventRepository,
 )
-
-
-@pytest.fixture
-def engine():
-    """Create a fresh in-memory SQLite database for each test."""
-    eng = create_engine("sqlite:///:memory:")
-    metadata.create_all(eng)
-    return eng
 
 
 @pytest.fixture

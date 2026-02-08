@@ -1,10 +1,8 @@
 """Tests for the medical voice pipeline with mocked adapters."""
 
 import pytest
-from sqlalchemy import create_engine, StaticPool
 
 from services.api.src.api.core.pipeline import run_voice_pipeline
-from services.api.src.api.db.models import metadata
 from services.api.src.api.db.repository import (
     AuditEventRepository,
     IncidentRepository,
@@ -60,17 +58,6 @@ def mock_tts(text):
 
 
 # -- Fixtures ----------------------------------------------------------------
-
-@pytest.fixture
-def engine():
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    metadata.create_all(eng)
-    return eng
-
 
 @pytest.fixture
 def incident_id(engine):
