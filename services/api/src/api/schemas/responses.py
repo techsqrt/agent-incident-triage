@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class CreateIncidentRequest(BaseModel):
     domain: str
-    mode: str = "B"
+    mode: str = "chat"  # chat or voice
 
 
 class SendMessageRequest(BaseModel):
