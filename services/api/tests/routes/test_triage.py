@@ -1,4 +1,7 @@
-"""Tests for triage API endpoints using PostgreSQL."""
+"""Integration tests for triage API endpoints using PostgreSQL.
+
+Run with: pytest -m integration
+"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,10 +10,13 @@ from services.api.src.api.main import app
 from services.api.src.api.routes import triage as triage_module
 
 
+pytestmark = pytest.mark.integration
+
+
 @pytest.fixture
-def client(engine):
-    """TestClient with overridden DB engine."""
-    app.dependency_overrides[triage_module._engine] = lambda: engine
+def client(pg_engine):
+    """TestClient with real PostgreSQL engine."""
+    app.dependency_overrides[triage_module._engine] = lambda: pg_engine
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
