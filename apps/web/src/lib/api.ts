@@ -35,7 +35,7 @@ export async function checkRecaptchaStatus(): Promise<{ verified: boolean; requi
   return res.json();
 }
 
-export async function createIncident(domain: string, mode: string = 'B'): Promise<Incident> {
+export async function createIncident(domain: string, mode: string = 'chat'): Promise<Incident> {
   const res = await fetch(`${API_BASE}/api/triage/incidents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
