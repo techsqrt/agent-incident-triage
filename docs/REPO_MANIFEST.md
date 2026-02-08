@@ -40,6 +40,12 @@ Do not run services individually unless debugging. The root scripts handle envir
 - All tests must pass before merging
 - The API Docker image must build and start successfully
 
+## Git Workflow Rules
+
+- **Never push directly to master** — Always create a feature branch and open a PR
+- **Never add Co-Authored-By for AI tools** — No Claude, GPT, or other AI co-author lines
+- **Never add "generated with" AI disclaimers** — No "Generated with Claude" or similar text in PRs or commits
+
 ## Commit Message Style
 
 Use simple tags without parentheses:
