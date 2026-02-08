@@ -102,6 +102,54 @@ class TestRedFlagDetection:
         names = [f.name for f in flags]
         assert "suicidal" in names
 
+    def test_heart_attack_flag(self):
+        e = MedicalExtraction(chief_complaint="I think I'm having a heart attack")
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "heart attack" in names
+
+    def test_dying_flag(self):
+        e = MedicalExtraction(chief_complaint="I feel like I'm dying")
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "dying" in names
+
+    def test_cant_breathe_flag(self):
+        e = MedicalExtraction(symptoms=["can't breathe"])
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "can't breathe" in names
+
+    def test_overdose_flag(self):
+        e = MedicalExtraction(chief_complaint="I took an overdose")
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "overdose" in names
+
+    def test_choking_flag(self):
+        e = MedicalExtraction(symptoms=["choking"])
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "choking" in names
+
+    def test_passed_out_flag(self):
+        e = MedicalExtraction(chief_complaint="I passed out earlier")
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "passed out" in names
+
+    def test_stroke_flag(self):
+        e = MedicalExtraction(symptoms=["stroke"])
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "stroke" in names
+
+    def test_kill_myself_flag(self):
+        e = MedicalExtraction(chief_complaint="I want to kill myself")
+        flags = detect_red_flags(e)
+        names = [f.name for f in flags]
+        assert "kill myself" in names
+
 
 # ---------------------------------------------------------------------------
 # ESI acuity scoring
@@ -123,6 +171,26 @@ class TestAcuityScoring:
 
     def test_esi_1_anaphylaxis(self):
         e = MedicalExtraction(symptoms=["anaphylaxis"])
+        flags = detect_red_flags(e)
+        assert compute_acuity(e, flags) == 1
+
+    def test_esi_1_heart_attack(self):
+        e = MedicalExtraction(chief_complaint="I'm having a heart attack")
+        flags = detect_red_flags(e)
+        assert compute_acuity(e, flags) == 1
+
+    def test_esi_1_dying(self):
+        e = MedicalExtraction(chief_complaint="I'm dying")
+        flags = detect_red_flags(e)
+        assert compute_acuity(e, flags) == 1
+
+    def test_esi_1_overdose(self):
+        e = MedicalExtraction(chief_complaint="I took an overdose of pills")
+        flags = detect_red_flags(e)
+        assert compute_acuity(e, flags) == 1
+
+    def test_esi_1_cardiac_arrest(self):
+        e = MedicalExtraction(symptoms=["cardiac arrest"])
         flags = detect_red_flags(e)
         assert compute_acuity(e, flags) == 1
 
@@ -228,3 +296,22 @@ class TestAssess:
         e = MedicalExtraction(mental_status="unresponsive")
         result = assess(e)
         assert "ESCALATE" in result.summary
+
+    def test_heart_attack_escalates(self):
+        e = MedicalExtraction(chief_complaint="I'm having a heart attack")
+        result = assess(e)
+        assert result.acuity == 1
+        assert result.escalate is True
+        assert result.disposition == "escalate"
+
+    def test_dying_escalates(self):
+        e = MedicalExtraction(chief_complaint="I feel like I'm dying")
+        result = assess(e)
+        assert result.acuity == 1
+        assert result.escalate is True
+
+    def test_overdose_escalates(self):
+        e = MedicalExtraction(chief_complaint="overdose")
+        result = assess(e)
+        assert result.acuity == 1
+        assert result.escalate is True

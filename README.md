@@ -1,67 +1,72 @@
 # Agent Incident Triage
 
-Modular incident triage agent pipeline with shared core and domain-specific modules.
+A voice-powered medical triage system that listens to patients, understands their symptoms, and decides how urgent their case is — escalating to a human professional when needed.
 
-## Architecture
+**Live app:** https://agent-incident-triage.vercel.app
+
+## What it does
+
+1. A patient describes what's wrong — by voice or text
+2. AI transcribes and extracts structured medical data (symptoms, pain level, vitals)
+3. **Deterministic rules** (not AI) make the final call: how urgent is this? Should we escalate?
+4. The system responds with a follow-up question or an immediate escalation message
+
+The AI is an *untrusted helper* — it listens and organizes information. But the actual triage decision (urgency level, whether to escalate) is always made by [hard-coded medical rules](services/api/src/api/domains/medical/rules.py), never by the model.
+
+## How urgency works
+
+The system uses an ESI-like acuity scale from 1 (most urgent) to 5 (least):
+
+| Level | Meaning | Example | Action |
+|-------|---------|---------|--------|
+| **1** | Immediate life threat | Heart attack, unresponsive, "I'm dying" | Escalate NOW |
+| **2** | High risk | Confused, severe pain (8+), multiple red flags | Escalate NOW |
+| **3** | Moderate | Single red flag, moderate pain, abnormal vitals | Continue assessment |
+| **4** | Mild | Some symptoms, nothing alarming | May discharge |
+| **5** | Minor | Simple complaint, no concerns | Discharge |
+
+Levels 1-2 trigger immediate escalation to a human professional. The system stops asking follow-up questions and tells the patient help is on the way.
+
+## What happens under the hood
 
 ```
-apps/web          → Next.js 15 (App Router) frontend
-services/api      → FastAPI backend with SQLAlchemy
-infra/            → Docker Compose (Postgres + Redis)
+Voice/Text → [AI] Transcribe & Extract → [Rules] Triage Decision → [AI] Respond → Voice/Text
+               (untrusted helper)          (deterministic, final)     (if not escalating)
 ```
 
-### Domain modules
+**The voice pipeline (5 steps):**
+1. **STT** — Speech-to-text converts audio to transcript (OpenAI)
+2. **Extract** — LLM pulls out structured data: chief complaint, symptoms, pain scale, vitals, mental status
+3. **Triage Rules** — Deterministic rules scan for red flags and compute urgency ([see rules.py](services/api/src/api/domains/medical/rules.py))
+4. **Generate** — If not escalating, LLM generates a follow-up question. If escalating, a fixed message is returned immediately
+5. **TTS** — Text-to-speech converts the response back to audio
 
-| Domain   | Status   | Description                        |
-|----------|----------|------------------------------------|
-| Medical  | Active   | ESI-like triage with voice support |
-| SRE      | Inactive | Scaffolding only (Coming soon)     |
-| Crypto   | Inactive | Scaffolding only (Coming soon)     |
+Every step is logged to an audit trail with trace IDs, latency, and redacted payloads — so you can see exactly what happened and why.
 
-### Medical triage pipeline
+## Red flags
 
-```
-Audio → STT → Extract (LLM) → Triage Rules → Generate Response → TTS → Audio
-```
+The rules engine scans for dangerous keywords and conditions. Some examples:
 
-- **STT**: OpenAI `gpt-4o-mini-transcribe`
-- **Extraction**: Schema-driven via `gpt-4o-mini` (strict JSON output)
-- **Triage rules**: Deterministic ESI acuity 1-5, red-flag detection, escalation logic
-- **Response**: Follow-up question generation via `gpt-4o-mini`
-- **TTS**: OpenAI `gpt-4o-mini-tts`
+- **Cardiac:** chest pain, heart attack, cardiac arrest
+- **Respiratory:** can't breathe, shortness of breath, choking
+- **Neurological:** seizure, stroke, slurred speech
+- **Bleeding:** severe bleeding, uncontrolled bleeding
+- **Psychiatric:** suicidal, self-harm
+- **Vitals:** heart rate > 150 or < 40, O2 < 90%, temp >= 104F, blood pressure < 80
 
-Every step is logged to an append-only audit ledger with trace IDs, latency, and redacted payloads.
+Full list and logic: [rules.py](services/api/src/api/domains/medical/rules.py)
 
 ## Quick start
 
 ```bash
-# Install dependencies
-./install.sh
-
-# Copy environment variables
-cp .env.example .env.local
-# Edit .env.local and add your OPENAI_API_KEY
-
-# Start everything (Postgres + Redis + API + Web)
-./run.sh
+./install.sh     # Install dependencies
+cp .env.example .env.local   # Add your OPENAI_API_KEY
+./run.sh         # Start everything (Postgres + API + Web)
 ```
 
-Services:
 - Web: http://localhost:3000
 - API: http://127.0.0.1:8000
 - API docs: http://127.0.0.1:8000/docs
-
-## API endpoints
-
-| Method | Path                                  | Description              |
-|--------|---------------------------------------|--------------------------|
-| GET    | `/health`                             | Health check             |
-| GET    | `/api/triage/domains`                 | List domains and status  |
-| POST   | `/api/triage/incidents`               | Create incident          |
-| GET    | `/api/triage/incidents/{id}`          | Get incident             |
-| POST   | `/api/triage/incidents/{id}/messages` | Send text message        |
-| POST   | `/api/triage/incidents/{id}/voice`    | Voice pipeline (audio)   |
-| GET    | `/api/triage/incidents/{id}/timeline` | Audit event timeline     |
 
 ## Testing
 
@@ -69,46 +74,12 @@ Services:
 ./test.sh
 ```
 
-Backend: pytest (85 tests) — schemas, rules, repositories, endpoints, pipeline
-Frontend: vitest (2 tests) — API client
-
-## Environment variables
-
-See `.env.example` for all configuration options.
-
-| Variable               | Default                       | Description                  |
-|------------------------|-------------------------------|------------------------------|
-| `DATABASE_URL`         | `sqlite:///./local.db`        | Database connection string   |
-| `OPENAI_API_KEY`       | (empty)                       | OpenAI API key               |
-| `OPENAI_MODEL_TEXT`    | `gpt-4o-mini`                 | LLM for extraction           |
-| `OPENAI_MODEL_STT`    | `gpt-4o-mini-transcribe`      | Speech-to-text model         |
-| `OPENAI_MODEL_TTS`    | `gpt-4o-mini-tts`             | Text-to-speech model         |
-| `ACTIVE_DOMAINS`       | `medical`                     | Comma-separated active list  |
-| `NEXT_PUBLIC_API_URL`  | `http://127.0.0.1:8000`      | API base URL (frontend)      |
-
-When `OPENAI_API_KEY` is not set, all adapters return stub responses for local development.
-
-## Project structure
+## Architecture
 
 ```
-services/api/
-├── src/api/
-│   ├── adapters/          # OpenAI STT/LLM/TTS adapters
-│   ├── core/              # Feature flags, redaction, pipeline
-│   ├── db/                # Engine, models, migrations, repositories
-│   ├── domains/
-│   │   ├── medical/       # Schemas, rules, prompts
-│   │   ├── sre/           # Scaffolding
-│   │   └── crypto/        # Scaffolding
-│   ├── routes/            # FastAPI endpoints
-│   └── schemas/           # Request/response models
-├── migrations/            # Raw SQL migration files
-└── tests/                 # pytest test suite
-
-apps/web/
-├── src/
-│   ├── app/
-│   │   ├── components/    # ChatPanel, VoiceRecorder, Timeline, etc.
-│   │   └── triage/        # Dashboard and incident detail pages
-│   └── lib/               # API client and TypeScript types
+apps/web/         → Next.js 15 frontend (voice recorder, chat, timeline)
+services/api/     → FastAPI backend (pipeline, rules, audit trail)
+infra/            → Docker Compose (Postgres)
 ```
+
+Data is stored in Postgres: incidents, messages, assessments, and an append-only audit event ledger. The timeline view shows human-readable logs of each interaction step.

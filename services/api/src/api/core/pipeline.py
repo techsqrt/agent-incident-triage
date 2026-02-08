@@ -168,19 +168,28 @@ def run_voice_pipeline(
 
     # --------------- Step 4: Generate Response ---------------
     t0 = time.monotonic()
-    try:
-        response_text, token_usage = generate_fn(extraction.model_dump())
-    except Exception as exc:
-        gen_ms = int((time.monotonic() - t0) * 1000)
-        logger.error("pipeline_generate_failed", extra={
-            "incident_id": incident_id, "trace_id": trace_id, "error": str(exc),
-        })
-        audit_repo.append(
-            incident_id=incident_id, trace_id=trace_id, step="GENERATE_FAILED",
-            payload_json={"error": str(exc)}, latency_ms=gen_ms,
+
+    # Short-circuit: if escalation needed, don't ask follow-ups
+    if assessment.escalate:
+        response_text = (
+            "Based on what you've told me, this requires immediate medical attention. "
+            "I'm escalating your case to a medical professional right away."
         )
-        response_text = "I'm having trouble generating a response. Please try again."
         token_usage = {}
+    else:
+        try:
+            response_text, token_usage = generate_fn(extraction.model_dump())
+        except Exception as exc:
+            gen_ms = int((time.monotonic() - t0) * 1000)
+            logger.error("pipeline_generate_failed", extra={
+                "incident_id": incident_id, "trace_id": trace_id, "error": str(exc),
+            })
+            audit_repo.append(
+                incident_id=incident_id, trace_id=trace_id, step="GENERATE_FAILED",
+                payload_json={"error": str(exc)}, latency_ms=gen_ms,
+            )
+            response_text = "I'm having trouble generating a response. Please try again."
+            token_usage = {}
     gen_ms = int((time.monotonic() - t0) * 1000)
 
     result.response_text = response_text

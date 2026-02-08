@@ -176,6 +176,57 @@ class TestVoicePipeline:
         incident = incident_repo.get(incident_id)
         assert incident["status"] == "ESCALATED"
 
+    def test_pipeline_escalation_skips_generate(self, engine, incident_id):
+        """When case is critical, pipeline should NOT call generate_fn
+        and should return a fixed escalation message instead."""
+        generate_called = False
+
+        def mock_generate_spy(extraction_dict):
+            nonlocal generate_called
+            generate_called = True
+            return "follow-up question?", {}
+
+        result = run_voice_pipeline(
+            incident_id=incident_id,
+            audio_bytes=b"fake-audio",
+            filename="test.webm",
+            engine=engine,
+            stt_fn=mock_stt_critical,
+            extract_fn=mock_extract_critical,
+            generate_fn=mock_generate_spy,
+            tts_fn=mock_tts,
+        )
+
+        assert generate_called is False
+        assert "escalating" in result.response_text.lower()
+        assert "immediate medical attention" in result.response_text.lower()
+
+    def test_pipeline_escalation_response_text(self, engine):
+        """Escalated cases get a fixed response, not an LLM-generated one."""
+        repo = IncidentRepository(engine)
+        row = repo.create(domain="medical", mode="B")
+        iid = row["id"]
+
+        def mock_extract_dying(text):
+            return MedicalExtraction(
+                chief_complaint="I'm dying",
+                symptoms=["dying"],
+            )
+
+        result = run_voice_pipeline(
+            incident_id=iid,
+            audio_bytes=b"fake-audio",
+            filename="test.webm",
+            engine=engine,
+            stt_fn=mock_stt,
+            extract_fn=mock_extract_dying,
+            generate_fn=mock_generate,
+            tts_fn=mock_tts,
+        )
+
+        assert result.assessment_row is not None
+        assert "escalating" in result.response_text.lower()
+
     def test_pipeline_audit_has_latency(self, engine, incident_id):
         run_voice_pipeline(
             incident_id=incident_id,

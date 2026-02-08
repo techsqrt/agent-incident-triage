@@ -25,6 +25,10 @@ app = FastAPI(title="Agent Incident Triage API", lifespan=lifespan)
 # CORS for frontend
 cors_origins = [
     "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "http://localhost:3004",
     "https://localhost:3000",
 ]
 
