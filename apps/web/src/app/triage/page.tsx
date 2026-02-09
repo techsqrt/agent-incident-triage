@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { fetchDomains, createIncident } from '@/lib/api';
 import type { Domain } from '@/lib/types';
 import { DomainTabs } from '@/app/components/DomainTabs';
+import { IncidentsList } from '@/app/components/IncidentsList';
 
 export default function TriagePage() {
   const router = useRouter();
@@ -70,38 +71,44 @@ export default function TriagePage() {
         onDomainChange={setActiveDomain}
       />
 
-      {activeDomain === 'medical' && (
-        <div style={{
-          padding: '24px',
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          background: '#fafafa',
-        }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '12px' }}>
-            Medical Triage
-          </h2>
-          <p style={{ color: '#666', marginBottom: '16px' }}>
-            Start a new medical triage incident to begin the assessment process.
-            You can describe symptoms via text chat or voice recording.
-          </p>
-          <button
-            onClick={handleStartIncident}
-            disabled={creating}
-            style={{
-              padding: '12px 24px',
-              background: '#333',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: creating ? 'not-allowed' : 'pointer',
-              opacity: creating ? 0.5 : 1,
-              fontWeight: 'bold',
-              fontSize: '14px',
-            }}
-          >
-            {creating ? 'Creating...' : 'Start New Incident'}
-          </button>
-        </div>
+      {activeDomain && (
+        <>
+          <div style={{
+            padding: '24px',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            background: '#fafafa',
+            marginBottom: '24px',
+          }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '12px' }}>
+              {activeDomain.charAt(0).toUpperCase() + activeDomain.slice(1)} Triage
+            </h2>
+            <p style={{ color: '#666', marginBottom: '16px' }}>
+              {activeDomain === 'medical' && 'Start a new medical triage incident to begin the assessment process. You can describe symptoms via text chat or voice recording.'}
+              {activeDomain === 'sre' && 'Start a new SRE incident to triage infrastructure and service issues.'}
+              {activeDomain === 'crypto' && 'Start a new crypto incident to assess DeFi and blockchain-related concerns.'}
+            </p>
+            <button
+              onClick={handleStartIncident}
+              disabled={creating || !domains.find(d => d.name === activeDomain)?.active}
+              style={{
+                padding: '12px 24px',
+                background: '#333',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: creating || !domains.find(d => d.name === activeDomain)?.active ? 'not-allowed' : 'pointer',
+                opacity: creating || !domains.find(d => d.name === activeDomain)?.active ? 0.5 : 1,
+                fontWeight: 'bold',
+                fontSize: '14px',
+              }}
+            >
+              {creating ? 'Creating...' : !domains.find(d => d.name === activeDomain)?.active ? 'Coming Soon' : 'Start New Incident'}
+            </button>
+          </div>
+
+          <IncidentsList domain={activeDomain} />
+        </>
       )}
     </div>
   );

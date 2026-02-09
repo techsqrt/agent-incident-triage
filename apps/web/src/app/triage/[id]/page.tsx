@@ -9,6 +9,7 @@ import { ChatPanel } from '@/app/components/ChatPanel';
 import { VoiceRecorder } from '@/app/components/VoiceRecorder';
 import { Timeline } from '@/app/components/Timeline';
 import { AssessmentCard } from '@/app/components/AssessmentCard';
+import { ExplainabilitySection } from '@/app/components/ExplainabilitySection';
 
 type Tab = 'chat' | 'voice' | 'timeline';
 
@@ -211,6 +212,8 @@ export default function IncidentDetailPage() {
           <Timeline incidentId={incidentId} />
         </div>
       </div>
+
+      <ExplainabilitySection incidentId={incidentId} assessment={assessment} />
     </div>
   );
 }

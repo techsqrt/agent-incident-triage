@@ -61,3 +61,8 @@ export interface MessageWithAssessmentResponse {
   assistant_message: Message;
   assessment: Assessment | null;
 }
+
+export interface IncidentListResponse {
+  incidents: Incident[];
+  total: number;
+}
