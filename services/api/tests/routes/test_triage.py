@@ -60,13 +60,13 @@ class TestCreateIncident:
 
     def test_create_incident_unknown_domain(self, client):
         res = client.post("/api/triage/incidents", json={"domain": "unknown"})
-        assert res.status_code == 400
+        assert res.status_code == 422  # Pydantic validation error
 
     def test_create_incident_invalid_mode(self, client):
         res = client.post(
             "/api/triage/incidents", json={"domain": "medical", "mode": "X"}
         )
-        assert res.status_code == 400
+        assert res.status_code == 422  # Pydantic validation error
 
 
 class TestGetIncident:
