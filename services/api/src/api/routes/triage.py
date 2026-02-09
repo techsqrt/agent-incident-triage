@@ -401,6 +401,8 @@ def send_message(
     if incident["status"] == IncidentStatus.CLOSED.value:
         raise HTTPException(400, "Incident is closed")
 
+    import time
+
     trace_id = str(uuid.uuid4())
     msg_repo = MessageRepository(engine)
     assess_repo = AssessmentRepository(engine)
@@ -408,23 +410,44 @@ def send_message(
 
     patient_msg = msg_repo.create(incident_id, "patient", body.content)
 
-    extraction = extract_from_text(body.content)
+    # Step 1: Extract - try LLM first, fallback to deterministic
+    t0 = time.monotonic()
+    extract_model = "deterministic"
+    try:
+        from services.api.src.api.config import settings
+        if settings.openai_api_key:
+            from services.api.src.api.adapters.openai_llm import extract_medical
+            extraction = extract_medical(body.content)
+            extract_model = settings.openai_model_text
+        else:
+            extraction = extract_from_text(body.content)
+    except Exception as exc:
+        logger.warning("chat_extract_llm_failed", extra={"error": str(exc)})
+        extraction = extract_from_text(body.content)
+        extract_model = "deterministic (fallback)"
+    extract_ms = int((time.monotonic() - t0) * 1000)
 
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
         step="EXTRACT",
         payload_json=redact_dict(extraction.model_dump()),
-        model_used="deterministic",
+        model_used=extract_model,
+        latency_ms=extract_ms,
     )
 
+    # Step 2: Triage Rules (always deterministic)
+    t0 = time.monotonic()
     assessment_result = assess(extraction)
+    rules_ms = int((time.monotonic() - t0) * 1000)
 
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
         step="TRIAGE_RULES",
         payload_json={"acuity": assessment_result.acuity, "escalate": assessment_result.escalate},
+        model_used="rules.py (deterministic)",
+        latency_ms=rules_ms,
     )
 
     assessment_row = assess_repo.create(
@@ -443,6 +466,7 @@ def send_message(
         "ts": _str_dt(patient_msg["created_at"]),
         "message_id": patient_msg["id"],
         "content": body.content,
+        "source": "chat",
     })
 
     # Append assessment to history
@@ -460,7 +484,10 @@ def send_message(
     if assessment_result.escalate:
         incident_repo.update_status(incident_id, IncidentStatus.ESCALATED.value)
 
+    # Step 3: Generate Response
+    t0 = time.monotonic()
     assistant_text = _generate_response(extraction, assessment_result)
+    response_ms = int((time.monotonic() - t0) * 1000)
     assistant_msg = msg_repo.create(incident_id, "assistant", assistant_text)
 
     # Append assistant response to history
@@ -469,6 +496,8 @@ def send_message(
         "ts": _str_dt(assistant_msg["created_at"]),
         "message_id": assistant_msg["id"],
         "content": assistant_text,
+        "source": "chat",
+        "model": "deterministic (rule-based)",
     })
 
     audit_repo.append(
@@ -476,6 +505,8 @@ def send_message(
         trace_id=trace_id,
         step="RESPONSE_GENERATED",
         payload_json={"disposition": assessment_result.disposition},
+        model_used="deterministic (rule-based)",
+        latency_ms=response_ms,
     )
 
     logger.info("message_processed", extra={
