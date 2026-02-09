@@ -457,6 +457,25 @@ def send_message(
         latency_ms=0,
     )
 
+    # Build human explanation for risk signals
+    risk_explanation_parts = []
+    if extraction.risk_signals:
+        rs = extraction.risk_signals
+        if rs.suicidal_ideation or rs.suicidal_ideation_conviction > 0:
+            risk_explanation_parts.append(f"suicidal_ideation: {rs.suicidal_ideation} (conviction: {rs.suicidal_ideation_conviction:.1f})")
+        if rs.self_harm_intent or rs.self_harm_intent_conviction > 0:
+            risk_explanation_parts.append(f"self_harm: {rs.self_harm_intent} (conviction: {rs.self_harm_intent_conviction:.1f})")
+        if rs.chest_pain != "unknown" or rs.chest_pain_conviction > 0:
+            risk_explanation_parts.append(f"chest_pain: {rs.chest_pain} (conviction: {rs.chest_pain_conviction:.1f})")
+        if rs.can_breathe != "unknown" or rs.can_breathe_conviction > 0:
+            risk_explanation_parts.append(f"can_breathe: {rs.can_breathe} (conviction: {rs.can_breathe_conviction:.1f})")
+        if rs.neuro_deficit != "unknown" or rs.neuro_deficit_conviction > 0:
+            risk_explanation_parts.append(f"neuro_deficit: {rs.neuro_deficit} (conviction: {rs.neuro_deficit_conviction:.1f})")
+        if rs.bleeding_uncontrolled != "unknown" or rs.bleeding_uncontrolled_conviction > 0:
+            risk_explanation_parts.append(f"bleeding: {rs.bleeding_uncontrolled} (conviction: {rs.bleeding_uncontrolled_conviction:.1f})")
+
+    risk_explanation = "; ".join(risk_explanation_parts) if risk_explanation_parts else "No critical risk signals detected."
+
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
@@ -467,7 +486,7 @@ def send_message(
             "pain_scale": extraction.pain_scale,
             "mental_status": extraction.mental_status,
             "risk_signals": risk_signals_summary,
-            "human_explanation": f"Extracted {len(extraction.symptoms)} symptoms, pain scale {extraction.pain_scale or 'not provided'}, mental status: {extraction.mental_status}.",
+            "human_explanation": f"Extracted {len(extraction.symptoms)} symptoms, pain scale {extraction.pain_scale or 'not provided'}, mental status: {extraction.mental_status}. Risk signals: {risk_explanation}",
         },
         model_used=extract_model,
         latency_ms=extract_ms,
