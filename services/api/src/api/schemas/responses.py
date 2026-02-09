@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus
+from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus, Severity
 
 
 # -- Requests ---------------------------------------------------------------
@@ -30,6 +30,7 @@ class IncidentResponse(BaseModel):
     domain: Domain
     status: IncidentStatus
     mode: IncidentMode
+    severity: Severity
     created_at: str
     updated_at: str
 

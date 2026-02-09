@@ -24,6 +24,7 @@ triage_incidents = Table(
     Column("domain", String(32), nullable=False),  # medical, sre, crypto
     Column("status", String(32), nullable=False, server_default="OPEN"),
     Column("mode", String(8), nullable=False, server_default="chat"),  # chat, voice
+    Column("severity", String(16), nullable=False, server_default="UNASSIGNED"),  # classified severity
     Column("created_at", DateTime(timezone=True), nullable=False),  # ts_start
     Column("updated_at", DateTime(timezone=True), nullable=False),  # ts_last_msg
     Column("ts_escalated", DateTime(timezone=True), nullable=True),
@@ -36,9 +37,12 @@ triage_incidents = Table(
     CheckConstraint("domain IN ('medical', 'sre', 'crypto')", name="ck_incidents_domain"),
     CheckConstraint("status IN ('OPEN', 'TRIAGE_READY', 'ESCALATED', 'CLOSED')", name="ck_incidents_status"),
     CheckConstraint("mode IN ('chat', 'voice')", name="ck_incidents_mode"),
+    CheckConstraint("severity IN ('UNASSIGNED', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'RESOLVED')", name="ck_incidents_severity"),
     Index("ix_incidents_domain", "domain"),
     Index("ix_incidents_status", "status"),
+    Index("ix_incidents_severity", "severity"),
     Index("ix_incidents_created", "created_at"),
+    Index("ix_incidents_updated", "updated_at"),
 )
 
 triage_messages = Table(

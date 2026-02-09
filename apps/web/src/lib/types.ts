@@ -7,11 +7,14 @@ export interface DomainsResponse {
   domains: Domain[];
 }
 
+export type SeverityType = 'UNASSIGNED' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'RESOLVED';
+
 export interface Incident {
   id: string;
   domain: string;
   status: string;
   mode: string;
+  severity: SeverityType;
   created_at: string;
   updated_at: string;
 }

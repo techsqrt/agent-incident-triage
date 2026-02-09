@@ -20,7 +20,8 @@ from services.api.src.api.db.repository import (
 from services.api.src.api.domains.medical.extract import extract_from_text
 from services.api.src.api.domains.medical.rules import assess
 from services.api.src.api.domains.medical.schemas import MedicalExtraction
-from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus
+from datetime import datetime
+from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus, Severity
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
 from services.api.src.api.schemas.responses import (
@@ -159,6 +160,7 @@ def create_incident(
         domain=row["domain"],
         status=row["status"],
         mode=row["mode"],
+        severity=row.get("severity", "UNASSIGNED"),
         created_at=_str_dt(row["created_at"]),
         updated_at=_str_dt(row["updated_at"]),
     )
@@ -168,6 +170,9 @@ def create_incident(
 def list_incidents(
     domain: Domain | None = Query(None),
     status: IncidentStatus | None = Query(None),
+    severity: Severity | None = Query(None),
+    updated_after: datetime | None = Query(None, description="Filter by updated_at >= this datetime (ISO format)"),
+    updated_before: datetime | None = Query(None, description="Filter by updated_at <= this datetime (ISO format)"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     engine: Engine = Depends(_engine),
@@ -177,8 +182,24 @@ def list_incidents(
 
     domain_str = domain.value if domain else None
     status_str = status.value if status else None
+    severity_str = severity.value if severity else None
 
-    rows = repo.list_all(domain=domain_str, status=status_str, limit=limit, offset=offset)
+    rows = repo.list_all(
+        domain=domain_str,
+        status=status_str,
+        severity=severity_str,
+        updated_after=updated_after,
+        updated_before=updated_before,
+        limit=limit,
+        offset=offset,
+    )
+    total = repo.count_all(
+        domain=domain_str,
+        status=status_str,
+        severity=severity_str,
+        updated_after=updated_after,
+        updated_before=updated_before,
+    )
 
     return IncidentListResponse(
         incidents=[
@@ -187,12 +208,13 @@ def list_incidents(
                 domain=row["domain"],
                 status=row["status"],
                 mode=row["mode"],
+                severity=row.get("severity", "UNASSIGNED"),
                 created_at=_str_dt(row["created_at"]),
                 updated_at=_str_dt(row["updated_at"]),
             )
             for row in rows
         ],
-        total=len(rows),
+        total=total,
     )
 
 
@@ -212,6 +234,7 @@ def get_incident(
         domain=row["domain"],
         status=row["status"],
         mode=row["mode"],
+        severity=row.get("severity", "UNASSIGNED"),
         created_at=_str_dt(row["created_at"]),
         updated_at=_str_dt(row["updated_at"]),
     )
@@ -268,6 +291,7 @@ def update_incident_status(
         domain=updated["domain"],
         status=updated["status"],
         mode=updated["mode"],
+        severity=updated.get("severity", "UNASSIGNED"),
         created_at=_str_dt(updated["created_at"]),
         updated_at=_str_dt(updated["updated_at"]),
     )
@@ -302,6 +326,7 @@ def close_incident(
         domain=updated["domain"],
         status=updated["status"],
         mode=updated["mode"],
+        severity=updated.get("severity", "UNASSIGNED"),
         created_at=_str_dt(updated["created_at"]),
         updated_at=_str_dt(updated["updated_at"]),
     )
@@ -335,6 +360,7 @@ def reopen_incident(
         domain=updated["domain"],
         status=updated["status"],
         mode=updated["mode"],
+        severity=updated.get("severity", "UNASSIGNED"),
         created_at=_str_dt(updated["created_at"]),
         updated_at=_str_dt(updated["updated_at"]),
     )

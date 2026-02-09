@@ -59,6 +59,7 @@ class IncidentRepository:
             "domain": domain,
             "status": "OPEN",
             "mode": mode,
+            "severity": "UNASSIGNED",
             "created_at": now,
             "updated_at": now,
             "ts_escalated": None,
@@ -163,6 +164,9 @@ class IncidentRepository:
         self,
         domain: str | None = None,
         status: str | None = None,
+        severity: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
@@ -173,7 +177,13 @@ class IncidentRepository:
                 query = query.where(triage_incidents.c.domain == domain)
             if status:
                 query = query.where(triage_incidents.c.status == status)
-            query = query.order_by(triage_incidents.c.created_at.desc())
+            if severity:
+                query = query.where(triage_incidents.c.severity == severity)
+            if updated_after:
+                query = query.where(triage_incidents.c.updated_at >= updated_after)
+            if updated_before:
+                query = query.where(triage_incidents.c.updated_at <= updated_before)
+            query = query.order_by(triage_incidents.c.updated_at.desc())
             query = query.limit(limit).offset(offset)
 
             result = conn.execute(query)
@@ -184,6 +194,40 @@ class IncidentRepository:
                 d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
                 rows.append(d)
             return rows
+
+    def update_severity(self, incident_id: str, severity: str) -> None:
+        """Update incident severity classification."""
+        with self.engine.begin() as conn:
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(severity=severity, updated_at=_now())
+            )
+
+    def count_all(
+        self,
+        domain: str | None = None,
+        status: str | None = None,
+        severity: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
+    ) -> int:
+        """Count incidents matching filters."""
+        from sqlalchemy import func
+        with self.engine.connect() as conn:
+            query = select(func.count()).select_from(triage_incidents)
+            if domain:
+                query = query.where(triage_incidents.c.domain == domain)
+            if status:
+                query = query.where(triage_incidents.c.status == status)
+            if severity:
+                query = query.where(triage_incidents.c.severity == severity)
+            if updated_after:
+                query = query.where(triage_incidents.c.updated_at >= updated_after)
+            if updated_before:
+                query = query.where(triage_incidents.c.updated_at <= updated_before)
+            result = conn.execute(query)
+            return result.scalar() or 0
 
 
 class MessageRepository:

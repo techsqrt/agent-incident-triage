@@ -22,3 +22,13 @@ class Domain(str, Enum):
     MEDICAL = "medical"
     SRE = "sre"
     CRYPTO = "crypto"
+
+
+class Severity(str, Enum):
+    """Classified severity level for an incident."""
+    UNASSIGNED = "UNASSIGNED"  # Not yet classified
+    CRITICAL = "CRITICAL"      # Requires immediate attention (acuity 1)
+    HIGH = "HIGH"              # Urgent, needs prompt attention (acuity 2)
+    MEDIUM = "MEDIUM"          # Important but not urgent (acuity 3)
+    LOW = "LOW"                # Minor issue (acuity 4-5)
+    RESOLVED = "RESOLVED"      # Issue has been addressed
