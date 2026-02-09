@@ -85,6 +85,85 @@ class TestGetIncident:
         assert res.status_code == 404
 
 
+class TestListIncidents:
+    def test_list_incidents_empty(self, client):
+        res = client.get("/api/triage/incidents")
+        assert res.status_code == 200
+        data = res.json()
+        assert "incidents" in data
+        assert "total" in data
+
+    def test_list_incidents_with_filter(self, client):
+        # Create incident
+        client.post("/api/triage/incidents", json={"domain": "medical"})
+
+        res = client.get("/api/triage/incidents?domain=medical")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["incidents"]) >= 1
+        assert all(i["domain"] == "medical" for i in data["incidents"])
+
+
+class TestCloseReopenIncident:
+    def _create_incident(self, client) -> str:
+        res = client.post("/api/triage/incidents", json={"domain": "medical"})
+        return res.json()["id"]
+
+    def test_close_incident(self, client):
+        inc_id = self._create_incident(client)
+
+        res = client.post(f"/api/triage/incidents/{inc_id}/close")
+        assert res.status_code == 200
+        assert res.json()["status"] == "CLOSED"
+
+    def test_close_already_closed_incident(self, client):
+        inc_id = self._create_incident(client)
+
+        # Close it first
+        client.post(f"/api/triage/incidents/{inc_id}/close")
+
+        # Try to close again
+        res = client.post(f"/api/triage/incidents/{inc_id}/close")
+        assert res.status_code == 400
+        assert "already closed" in res.json()["detail"]
+
+    def test_reopen_closed_incident(self, client):
+        inc_id = self._create_incident(client)
+
+        # Close then reopen
+        client.post(f"/api/triage/incidents/{inc_id}/close")
+        res = client.post(f"/api/triage/incidents/{inc_id}/reopen")
+
+        assert res.status_code == 200
+        assert res.json()["status"] == "OPEN"
+
+    def test_reopen_open_incident_fails(self, client):
+        inc_id = self._create_incident(client)
+
+        res = client.post(f"/api/triage/incidents/{inc_id}/reopen")
+        assert res.status_code == 400
+        assert "closed" in res.json()["detail"].lower()
+
+    def test_close_nonexistent_incident(self, client):
+        res = client.post("/api/triage/incidents/fake-id/close")
+        assert res.status_code == 404
+
+    def test_reopen_nonexistent_incident(self, client):
+        res = client.post("/api/triage/incidents/fake-id/reopen")
+        assert res.status_code == 404
+
+    def test_send_message_to_closed_incident_fails(self, client):
+        inc_id = self._create_incident(client)
+        client.post(f"/api/triage/incidents/{inc_id}/close")
+
+        res = client.post(
+            f"/api/triage/incidents/{inc_id}/messages",
+            json={"content": "hello"},
+        )
+        assert res.status_code == 400
+        assert "closed" in res.json()["detail"].lower()
+
+
 # ---------------------------------------------------------------------------
 # Messages
 # ---------------------------------------------------------------------------
