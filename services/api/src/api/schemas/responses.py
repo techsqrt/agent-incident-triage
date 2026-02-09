@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus
 
 
 # -- Requests ---------------------------------------------------------------
 
 class CreateIncidentRequest(BaseModel):
-    domain: str
-    mode: str = "chat"  # chat or voice
+    domain: Domain
+    mode: IncidentMode = IncidentMode.CHAT
 
 
 class SendMessageRequest(BaseModel):
@@ -17,13 +19,17 @@ class SendMessageRequest(BaseModel):
     recaptcha_token: str | None = None
 
 
+class UpdateIncidentStatusRequest(BaseModel):
+    status: IncidentStatus
+
+
 # -- Responses ---------------------------------------------------------------
 
 class IncidentResponse(BaseModel):
     id: str
-    domain: str
-    status: str
-    mode: str
+    domain: Domain
+    status: IncidentStatus
+    mode: IncidentMode
     created_at: str
     updated_at: str
 
@@ -39,7 +45,7 @@ class MessageResponse(BaseModel):
 class AssessmentResponse(BaseModel):
     id: str
     incident_id: str
-    domain: str
+    domain: Domain
     result_json: dict
     created_at: str
 
@@ -72,3 +78,8 @@ class VoiceResponse(BaseModel):
     response_text: str
     audio_base64: str | None = None
     assessment: AssessmentResponse | None = None
+
+
+class IncidentListResponse(BaseModel):
+    incidents: list[IncidentResponse]
+    total: int

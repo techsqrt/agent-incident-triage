@@ -1,10 +1,9 @@
 """Triage API endpoints."""
 
 import logging
-import os
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from sqlalchemy.engine import Engine
 
 from services.api.src.api.config import settings
@@ -21,17 +20,20 @@ from services.api.src.api.db.repository import (
 from services.api.src.api.domains.medical.extract import extract_from_text
 from services.api.src.api.domains.medical.rules import assess
 from services.api.src.api.domains.medical.schemas import MedicalExtraction
+from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
 from services.api.src.api.schemas.responses import (
     AssessmentResponse,
     AuditEventResponse,
     CreateIncidentRequest,
+    IncidentListResponse,
     IncidentResponse,
     MessageResponse,
     MessageWithAssessmentResponse,
     SendMessageRequest,
     TimelineResponse,
+    UpdateIncidentStatusRequest,
     VoiceResponse,
 )
 
@@ -42,12 +44,9 @@ router = APIRouter()
 
 def _get_client_ip(request: Request) -> str:
     """Get client IP from request, handling proxies."""
-    # Check X-Forwarded-For header (set by proxies/load balancers)
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        # Take the first IP (original client)
         return forwarded.split(",")[0].strip()
-    # Fall back to direct connection IP
     return request.client.host if request.client else "unknown"
 
 
@@ -55,12 +54,11 @@ def _verify_recaptcha(token: str | None, request: Request, engine: Engine) -> No
     """Verify reCAPTCHA token if secret key is configured. Caches verified IPs for 7 days."""
     recaptcha_secret = settings.recaptcha_secret_key
     if not recaptcha_secret:
-        return  # reCAPTCHA not configured, skip verification
+        return
 
     client_ip = _get_client_ip(request)
     ip_repo = VerifiedIPRepository(engine)
 
-    # Check if IP is already verified
     if ip_repo.is_verified(client_ip):
         logger.info("recaptcha_ip_cached", extra={"ip": client_ip})
         return
@@ -71,10 +69,7 @@ def _verify_recaptcha(token: str | None, request: Request, engine: Engine) -> No
     import httpx
     resp = httpx.post(
         "https://www.google.com/recaptcha/api/siteverify",
-        data={
-            "secret": recaptcha_secret,
-            "response": token,
-        },
+        data={"secret": recaptcha_secret, "response": token},
     )
     result = resp.json()
     logger.info("recaptcha_google_response", extra={"ip": client_ip, "result": result})
@@ -84,7 +79,6 @@ def _verify_recaptcha(token: str | None, request: Request, engine: Engine) -> No
         logger.warning("recaptcha_verification_failed", extra={"ip": client_ip, "errors": error_codes})
         raise HTTPException(403, f"reCAPTCHA verification failed: {error_codes}")
 
-    # Store verified IP for 7 days
     ip_repo.add(client_ip)
     logger.info("recaptcha_ip_verified", extra={"ip": client_ip})
 
@@ -110,7 +104,6 @@ def check_recaptcha_status(
     """Check if client IP is already verified (cached for 7 days)."""
     recaptcha_secret = settings.recaptcha_secret_key
     if not recaptcha_secret:
-        # reCAPTCHA not configured, no verification needed
         logger.info("recaptcha_status_no_secret")
         return {"verified": True, "required": False}
 
@@ -148,19 +141,18 @@ def create_incident(
     engine: Engine = Depends(_engine),
 ) -> IncidentResponse:
     """Create a new triage incident."""
-    if body.domain not in ALL_DOMAINS:
-        raise HTTPException(400, f"Unknown domain: {body.domain}")
-    if not is_domain_active(body.domain):
-        raise HTTPException(400, f"Domain '{body.domain}' is not active")
-    if body.mode not in ("chat", "voice"):
-        raise HTTPException(400, f"Invalid mode: {body.mode}. Must be 'chat' or 'voice'")
+    domain_str = body.domain.value if isinstance(body.domain, Domain) else body.domain
+    mode_str = body.mode.value if isinstance(body.mode, IncidentMode) else body.mode
+
+    if domain_str not in ALL_DOMAINS:
+        raise HTTPException(400, f"Unknown domain: {domain_str}")
+    if not is_domain_active(domain_str):
+        raise HTTPException(400, f"Domain '{domain_str}' is not active")
 
     repo = IncidentRepository(engine)
-    row = repo.create(domain=body.domain, mode=body.mode)
+    row = repo.create(domain=domain_str, mode=mode_str)
 
-    logger.info("incident_created", extra={
-        "incident_id": row["id"], "domain": body.domain,
-    })
+    logger.info("incident_created", extra={"incident_id": row["id"], "domain": domain_str})
 
     return IncidentResponse(
         id=row["id"],
@@ -169,6 +161,38 @@ def create_incident(
         mode=row["mode"],
         created_at=_str_dt(row["created_at"]),
         updated_at=_str_dt(row["updated_at"]),
+    )
+
+
+@router.get("/incidents", response_model=IncidentListResponse)
+def list_incidents(
+    domain: Domain | None = Query(None),
+    status: IncidentStatus | None = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    engine: Engine = Depends(_engine),
+) -> IncidentListResponse:
+    """List incidents with optional filters."""
+    repo = IncidentRepository(engine)
+
+    domain_str = domain.value if domain else None
+    status_str = status.value if status else None
+
+    rows = repo.list_all(domain=domain_str, status=status_str, limit=limit, offset=offset)
+
+    return IncidentListResponse(
+        incidents=[
+            IncidentResponse(
+                id=row["id"],
+                domain=row["domain"],
+                status=row["status"],
+                mode=row["mode"],
+                created_at=_str_dt(row["created_at"]),
+                updated_at=_str_dt(row["updated_at"]),
+            )
+            for row in rows
+        ],
+        total=len(rows),
     )
 
 
@@ -193,6 +217,129 @@ def get_incident(
     )
 
 
+@router.patch("/incidents/{incident_id}/status", response_model=IncidentResponse)
+def update_incident_status(
+    incident_id: str,
+    body: UpdateIncidentStatusRequest,
+    engine: Engine = Depends(_engine),
+) -> IncidentResponse:
+    """Update incident status (close, reopen, etc.)."""
+    repo = IncidentRepository(engine)
+    row = repo.get(incident_id)
+    if not row:
+        raise HTTPException(404, "Incident not found")
+
+    current_status = IncidentStatus(row["status"])
+    new_status = body.status
+
+    # Validate status transitions
+    valid_transitions = {
+        IncidentStatus.OPEN: [IncidentStatus.TRIAGE_READY, IncidentStatus.ESCALATED, IncidentStatus.CLOSED],
+        IncidentStatus.TRIAGE_READY: [IncidentStatus.ESCALATED, IncidentStatus.CLOSED],
+        IncidentStatus.ESCALATED: [IncidentStatus.CLOSED],
+        IncidentStatus.CLOSED: [IncidentStatus.OPEN],  # reopen
+    }
+
+    if new_status not in valid_transitions.get(current_status, []):
+        raise HTTPException(
+            400,
+            f"Invalid status transition: {current_status.value} -> {new_status.value}"
+        )
+
+    repo.update_status(incident_id, new_status.value)
+
+    # Add interaction to history
+    repo.append_interaction(incident_id, {
+        "type": f"status_changed_to_{new_status.value.lower()}",
+        "ts": _str_dt(repo.get(incident_id)["updated_at"]),
+        "from_status": current_status.value,
+        "to_status": new_status.value,
+    })
+
+    updated = repo.get(incident_id)
+    logger.info("incident_status_updated", extra={
+        "incident_id": incident_id,
+        "from": current_status.value,
+        "to": new_status.value,
+    })
+
+    return IncidentResponse(
+        id=updated["id"],
+        domain=updated["domain"],
+        status=updated["status"],
+        mode=updated["mode"],
+        created_at=_str_dt(updated["created_at"]),
+        updated_at=_str_dt(updated["updated_at"]),
+    )
+
+
+@router.post("/incidents/{incident_id}/close", response_model=IncidentResponse)
+def close_incident(
+    incident_id: str,
+    engine: Engine = Depends(_engine),
+) -> IncidentResponse:
+    """Close an incident."""
+    repo = IncidentRepository(engine)
+    row = repo.get(incident_id)
+    if not row:
+        raise HTTPException(404, "Incident not found")
+
+    if row["status"] == IncidentStatus.CLOSED.value:
+        raise HTTPException(400, "Incident is already closed")
+
+    repo.update_status(incident_id, IncidentStatus.CLOSED.value)
+    repo.append_interaction(incident_id, {
+        "type": "incident_closed",
+        "ts": _str_dt(repo.get(incident_id)["updated_at"]),
+        "from_status": row["status"],
+    })
+
+    updated = repo.get(incident_id)
+    logger.info("incident_closed", extra={"incident_id": incident_id})
+
+    return IncidentResponse(
+        id=updated["id"],
+        domain=updated["domain"],
+        status=updated["status"],
+        mode=updated["mode"],
+        created_at=_str_dt(updated["created_at"]),
+        updated_at=_str_dt(updated["updated_at"]),
+    )
+
+
+@router.post("/incidents/{incident_id}/reopen", response_model=IncidentResponse)
+def reopen_incident(
+    incident_id: str,
+    engine: Engine = Depends(_engine),
+) -> IncidentResponse:
+    """Reopen a closed incident."""
+    repo = IncidentRepository(engine)
+    row = repo.get(incident_id)
+    if not row:
+        raise HTTPException(404, "Incident not found")
+
+    if row["status"] != IncidentStatus.CLOSED.value:
+        raise HTTPException(400, "Only closed incidents can be reopened")
+
+    repo.update_status(incident_id, IncidentStatus.OPEN.value)
+    repo.append_interaction(incident_id, {
+        "type": "incident_reopened",
+        "ts": _str_dt(repo.get(incident_id)["updated_at"]),
+    })
+
+    updated = repo.get(incident_id)
+    logger.info("incident_reopened", extra={"incident_id": incident_id})
+
+    return IncidentResponse(
+        id=updated["id"],
+        domain=updated["domain"],
+        status=updated["status"],
+        mode=updated["mode"],
+        created_at=_str_dt(updated["created_at"]),
+        updated_at=_str_dt(updated["updated_at"]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Messages
 # ---------------------------------------------------------------------------
@@ -214,7 +361,7 @@ def send_message(
     incident = incident_repo.get(incident_id)
     if not incident:
         raise HTTPException(404, "Incident not found")
-    if incident["status"] == "CLOSED":
+    if incident["status"] == IncidentStatus.CLOSED.value:
         raise HTTPException(400, "Incident is closed")
 
     trace_id = str(uuid.uuid4())
@@ -222,10 +369,8 @@ def send_message(
     assess_repo = AssessmentRepository(engine)
     audit_repo = AuditEventRepository(engine)
 
-    # 1) Persist patient message
     patient_msg = msg_repo.create(incident_id, "patient", body.content)
 
-    # 2) Run deterministic keyword extraction (text chat stays deterministic)
     extraction = extract_from_text(body.content)
 
     audit_repo.append(
@@ -236,7 +381,6 @@ def send_message(
         model_used="deterministic",
     )
 
-    # 3) Run deterministic triage rules
     assessment_result = assess(extraction)
 
     audit_repo.append(
@@ -246,18 +390,15 @@ def send_message(
         payload_json={"acuity": assessment_result.acuity, "escalate": assessment_result.escalate},
     )
 
-    # 4) Persist assessment
     assessment_row = assess_repo.create(
         incident_id=incident_id,
         domain=incident["domain"],
         result_json=assessment_result.model_dump(),
     )
 
-    # 5) Update incident status if escalation needed
     if assessment_result.escalate:
-        incident_repo.update_status(incident_id, "ESCALATED")
+        incident_repo.update_status(incident_id, IncidentStatus.ESCALATED.value)
 
-    # 6) Generate assistant response (simple for now — LLM adapter in M5)
     assistant_text = _generate_response(extraction, assessment_result)
     assistant_msg = msg_repo.create(incident_id, "assistant", assistant_text)
 
@@ -354,11 +495,9 @@ async def send_voice(
     incident = incident_repo.get(incident_id)
     if not incident:
         raise HTTPException(404, "Incident not found")
-    if incident["status"] == "CLOSED":
+    if incident["status"] == IncidentStatus.CLOSED.value:
         raise HTTPException(400, "Incident is closed")
 
-    # Reads full upload then checks size — returns a clear 413 JSON error
-    # so the client can show a friendly message instead of a raw failure.
     audio_bytes = await audio.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise HTTPException(413, "Audio file too large (max 10 MB)")
@@ -415,7 +554,6 @@ def _generate_response(
             "Please monitor your symptoms and seek care if they worsen."
         )
 
-    # Ask follow-up
     if not extraction.symptoms:
         return "Can you describe your symptoms in more detail?"
     if extraction.pain_scale is None:
