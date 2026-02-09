@@ -642,11 +642,31 @@ def _generate_response(
     extraction: MedicalExtraction,
     assessment,
 ) -> str:
-    """Generate a deterministic assistant response for text chat."""
-    if assessment.escalate:
-        return (
+    """Generate a deterministic assistant response for text chat.
+
+    SAFETY: If any red flags or triggered risk flags exist, we NEVER
+    return a "minor concern" message. Escalation takes priority.
+    """
+    # Check for escalation - either explicit or via risk flags
+    has_risk_flags = getattr(assessment, 'triggered_risk_flags', None) and len(assessment.triggered_risk_flags) > 0
+    has_red_flags = assessment.red_flags and len(assessment.red_flags) > 0
+
+    if assessment.escalate or has_risk_flags:
+        # Build escalation message with reason if available
+        base_msg = (
             "Based on what you've told me, this requires immediate medical attention. "
             "I'm escalating your case to a medical professional right away."
+        )
+        # Add specific reason if we have triggered risk flags
+        if has_risk_flags and hasattr(assessment, 'escalation_reason') and assessment.escalation_reason:
+            return f"{base_msg}\n\nReason: {assessment.escalation_reason}"
+        return base_msg
+
+    # SAFETY: Never say "minor concern" if there are any red flags
+    if has_red_flags:
+        return (
+            "I've noted some concerns in what you've described. "
+            "Please continue to describe your symptoms so I can complete your assessment."
         )
 
     if assessment.disposition == "discharge":

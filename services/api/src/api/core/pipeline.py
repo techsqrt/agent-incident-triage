@@ -212,11 +212,30 @@ def run_voice_pipeline(
     # --------------- Step 4: Generate Response ---------------
     t0 = time.monotonic()
 
-    # Short-circuit: if escalation needed, don't ask follow-ups
-    if assessment.escalate:
-        response_text = (
+    # Check for triggered risk flags
+    has_risk_flags = (
+        hasattr(assessment, 'triggered_risk_flags')
+        and len(assessment.triggered_risk_flags) > 0
+    )
+    has_red_flags = assessment.red_flags and len(assessment.red_flags) > 0
+
+    # Short-circuit: if escalation needed OR risk flags triggered, use fixed message
+    if assessment.escalate or has_risk_flags:
+        base_msg = (
             "Based on what you've told me, this requires immediate medical attention. "
             "I'm escalating your case to a medical professional right away."
+        )
+        # Add escalation reason if available
+        if has_risk_flags and hasattr(assessment, 'escalation_reason') and assessment.escalation_reason:
+            response_text = f"{base_msg} {assessment.escalation_reason}"
+        else:
+            response_text = base_msg
+        token_usage = {}
+    elif has_red_flags:
+        # SAFETY: Don't let LLM generate if there are red flags
+        response_text = (
+            "I've noted some concerns in what you've described. "
+            "Please continue to describe your symptoms so I can complete your assessment."
         )
         token_usage = {}
     else:
