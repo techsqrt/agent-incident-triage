@@ -78,7 +78,7 @@ echo "==> Using database: ${DATABASE_URL%%@*}@***"
 
 echo "==> Starting API server"
 cd "$REPO_ROOT/services/api"
-poetry run uvicorn services.api.src.api.main:app --reload &
+poetry run uvicorn services.api.src.api.main:app --reload --host 0.0.0.0 &
 API_PID=$!
 cd "$REPO_ROOT"
 
