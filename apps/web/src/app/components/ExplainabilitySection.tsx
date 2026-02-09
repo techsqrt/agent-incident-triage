@@ -580,16 +580,22 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                               >
                                 <span>{info?.emoji || '📌'}</span>
                                 <div style={{ flex: 1 }}>
-                                  <span
-                                    style={{
-                                      fontWeight: 500,
-                                      cursor: 'help',
-                                      borderBottom: info?.description ? '1px dotted #999' : 'none',
-                                    }}
-                                    title={info?.description || `Processing step: ${event.step}`}
-                                  >
+                                  <span style={{ fontWeight: 500 }}>
                                     {info?.title || event.step}
                                   </span>
+                                  {info?.description && (
+                                    <span
+                                      style={{
+                                        marginLeft: '4px',
+                                        cursor: 'help',
+                                        opacity: 0.6,
+                                        fontSize: '11px',
+                                      }}
+                                      title={info.description}
+                                    >
+                                      ℹ️
+                                    </span>
+                                  )}
                                   {event.model_used && (
                                     <span style={{ color: '#666', fontSize: '11px', marginLeft: '8px' }}>({event.model_used})</span>
                                   )}
