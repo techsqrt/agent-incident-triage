@@ -24,9 +24,10 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '';
 interface ChatPanelProps {
   incidentId: string;
   onAssessment?: (assessment: Assessment) => void;
+  disabled?: boolean;
 }
 
-export function ChatPanel({ incidentId, onAssessment }: ChatPanelProps) {
+export function ChatPanel({ incidentId, onAssessment, disabled = false }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -299,27 +300,28 @@ export function ChatPanel({ incidentId, onAssessment }: ChatPanelProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your symptoms..."
-          disabled={loading}
+          placeholder={disabled ? "Incident is closed" : "Describe your symptoms..."}
+          disabled={loading || disabled}
           style={{
             flex: 1,
             padding: '10px 14px',
             border: '1px solid #ccc',
             borderRadius: '6px',
             fontSize: '14px',
+            background: disabled ? '#f5f5f5' : '#fff',
           }}
         />
         <button
           onClick={handleSend}
-          disabled={loading || !input.trim() || !canSend}
+          disabled={loading || !input.trim() || !canSend || disabled}
           style={{
             padding: '10px 20px',
             background: '#333',
             color: '#fff',
             border: 'none',
             borderRadius: '6px',
-            cursor: loading || !canSend ? 'not-allowed' : 'pointer',
-            opacity: loading || !input.trim() || !canSend ? 0.5 : 1,
+            cursor: loading || !canSend || disabled ? 'not-allowed' : 'pointer',
+            opacity: loading || !input.trim() || !canSend || disabled ? 0.5 : 1,
             fontWeight: 'bold',
           }}
         >
