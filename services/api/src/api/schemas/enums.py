@@ -22,3 +22,13 @@ class Domain(str, Enum):
     MEDICAL = "medical"
     SRE = "sre"
     CRYPTO = "crypto"
+
+
+class Severity(str, Enum):
+    """ESI-based severity level for an incident."""
+    UNASSIGNED = "UNASSIGNED"  # Not yet classified
+    ESI_1 = "ESI-1"            # Immediate life threat (unresponsive, cardiac arrest)
+    ESI_2 = "ESI-2"            # High risk (confused, severe pain 8+, multiple red flags)
+    ESI_3 = "ESI-3"            # Moderate (single red flag, moderate pain, abnormal vitals)
+    ESI_4 = "ESI-4"            # Mild (some symptoms but nothing alarming)
+    ESI_5 = "ESI-5"            # Minor (simple complaint, no concerning findings)

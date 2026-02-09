@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from services.api.src.api.main import app
 from services.api.src.api.routes import triage as triage_module
+from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus, Severity
 
 
 @pytest.fixture
@@ -27,9 +28,9 @@ class TestListDomains:
         data = res.json()
         assert len(data["domains"]) == 3
         names = [d["name"] for d in data["domains"]]
-        assert "medical" in names
-        assert "sre" in names
-        assert "crypto" in names
+        assert Domain.MEDICAL.value in names
+        assert Domain.SRE.value in names
+        assert Domain.CRYPTO.value in names
 
 
 # ---------------------------------------------------------------------------
@@ -38,23 +39,25 @@ class TestListDomains:
 
 class TestCreateIncident:
     def test_create_medical_incident(self, client):
-        res = client.post("/api/triage/incidents", json={"domain": "medical"})
+        res = client.post("/api/triage/incidents", json={"domain": Domain.MEDICAL.value})
         assert res.status_code == 200
         data = res.json()
-        assert data["domain"] == "medical"
-        assert data["status"] == "OPEN"
-        assert data["mode"] == "chat"
+        assert data["domain"] == Domain.MEDICAL.value
+        assert data["status"] == IncidentStatus.OPEN.value
+        assert data["mode"] == IncidentMode.CHAT.value
+        assert data["severity"] == Severity.UNASSIGNED.value
         assert "id" in data
 
     def test_create_incident_with_voice_mode(self, client):
         res = client.post(
-            "/api/triage/incidents", json={"domain": "medical", "mode": "voice"}
+            "/api/triage/incidents",
+            json={"domain": Domain.MEDICAL.value, "mode": IncidentMode.VOICE.value}
         )
         assert res.status_code == 200
-        assert res.json()["mode"] == "voice"
+        assert res.json()["mode"] == IncidentMode.VOICE.value
 
     def test_create_incident_inactive_domain(self, client):
-        res = client.post("/api/triage/incidents", json={"domain": "sre"})
+        res = client.post("/api/triage/incidents", json={"domain": Domain.SRE.value})
         assert res.status_code == 400
         assert "not active" in res.json()["detail"]
 
@@ -64,7 +67,8 @@ class TestCreateIncident:
 
     def test_create_incident_invalid_mode(self, client):
         res = client.post(
-            "/api/triage/incidents", json={"domain": "medical", "mode": "X"}
+            "/api/triage/incidents",
+            json={"domain": Domain.MEDICAL.value, "mode": "X"}
         )
         assert res.status_code == 422  # Pydantic validation error
 
@@ -72,13 +76,15 @@ class TestCreateIncident:
 class TestGetIncident:
     def test_get_existing_incident(self, client):
         create_res = client.post(
-            "/api/triage/incidents", json={"domain": "medical"}
+            "/api/triage/incidents", json={"domain": Domain.MEDICAL.value}
         )
         inc_id = create_res.json()["id"]
 
         res = client.get(f"/api/triage/incidents/{inc_id}")
         assert res.status_code == 200
-        assert res.json()["id"] == inc_id
+        data = res.json()
+        assert data["id"] == inc_id
+        assert data["severity"] == Severity.UNASSIGNED.value
 
     def test_get_nonexistent_incident(self, client):
         res = client.get("/api/triage/incidents/does-not-exist")
@@ -93,20 +99,49 @@ class TestListIncidents:
         assert "incidents" in data
         assert "total" in data
 
-    def test_list_incidents_with_filter(self, client):
-        # Create incident
-        client.post("/api/triage/incidents", json={"domain": "medical"})
+    def test_list_incidents_with_domain_filter(self, client):
+        client.post("/api/triage/incidents", json={"domain": Domain.MEDICAL.value})
 
-        res = client.get("/api/triage/incidents?domain=medical")
+        res = client.get(f"/api/triage/incidents?domain={Domain.MEDICAL.value}")
         assert res.status_code == 200
         data = res.json()
         assert len(data["incidents"]) >= 1
-        assert all(i["domain"] == "medical" for i in data["incidents"])
+        assert all(i["domain"] == Domain.MEDICAL.value for i in data["incidents"])
+
+    def test_list_incidents_with_severity_filter(self, client):
+        client.post("/api/triage/incidents", json={"domain": Domain.MEDICAL.value})
+
+        res = client.get(f"/api/triage/incidents?severity={Severity.UNASSIGNED.value}")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["incidents"]) >= 1
+        assert all(i["severity"] == Severity.UNASSIGNED.value for i in data["incidents"])
+
+    def test_list_incidents_includes_severity(self, client):
+        client.post("/api/triage/incidents", json={"domain": Domain.MEDICAL.value})
+
+        res = client.get("/api/triage/incidents")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["incidents"]) >= 1
+        for incident in data["incidents"]:
+            assert "severity" in incident
+            assert incident["severity"] in [s.value for s in Severity]
+
+    def test_list_incidents_returns_total_count(self, client):
+        # Create multiple incidents
+        for _ in range(3):
+            client.post("/api/triage/incidents", json={"domain": Domain.MEDICAL.value})
+
+        res = client.get("/api/triage/incidents")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total"] >= 3
 
 
 class TestCloseReopenIncident:
     def _create_incident(self, client) -> str:
-        res = client.post("/api/triage/incidents", json={"domain": "medical"})
+        res = client.post("/api/triage/incidents", json={"domain": Domain.MEDICAL.value})
         return res.json()["id"]
 
     def test_close_incident(self, client):
@@ -114,15 +149,12 @@ class TestCloseReopenIncident:
 
         res = client.post(f"/api/triage/incidents/{inc_id}/close")
         assert res.status_code == 200
-        assert res.json()["status"] == "CLOSED"
+        assert res.json()["status"] == IncidentStatus.CLOSED.value
 
     def test_close_already_closed_incident(self, client):
         inc_id = self._create_incident(client)
 
-        # Close it first
         client.post(f"/api/triage/incidents/{inc_id}/close")
-
-        # Try to close again
         res = client.post(f"/api/triage/incidents/{inc_id}/close")
         assert res.status_code == 400
         assert "already closed" in res.json()["detail"]
@@ -130,12 +162,11 @@ class TestCloseReopenIncident:
     def test_reopen_closed_incident(self, client):
         inc_id = self._create_incident(client)
 
-        # Close then reopen
         client.post(f"/api/triage/incidents/{inc_id}/close")
         res = client.post(f"/api/triage/incidents/{inc_id}/reopen")
 
         assert res.status_code == 200
-        assert res.json()["status"] == "OPEN"
+        assert res.json()["status"] == IncidentStatus.OPEN.value
 
     def test_reopen_open_incident_fails(self, client):
         inc_id = self._create_incident(client)
@@ -163,6 +194,21 @@ class TestCloseReopenIncident:
         assert res.status_code == 400
         assert "closed" in res.json()["detail"].lower()
 
+    def test_closed_incident_response_includes_severity(self, client):
+        inc_id = self._create_incident(client)
+
+        res = client.post(f"/api/triage/incidents/{inc_id}/close")
+        assert res.status_code == 200
+        assert "severity" in res.json()
+
+    def test_reopened_incident_response_includes_severity(self, client):
+        inc_id = self._create_incident(client)
+        client.post(f"/api/triage/incidents/{inc_id}/close")
+
+        res = client.post(f"/api/triage/incidents/{inc_id}/reopen")
+        assert res.status_code == 200
+        assert "severity" in res.json()
+
 
 # ---------------------------------------------------------------------------
 # Messages
@@ -171,7 +217,7 @@ class TestCloseReopenIncident:
 class TestSendMessage:
     def _create_incident(self, client) -> str:
         res = client.post(
-            "/api/triage/incidents", json={"domain": "medical"}
+            "/api/triage/incidents", json={"domain": Domain.MEDICAL.value}
         )
         return res.json()["id"]
 
@@ -198,9 +244,8 @@ class TestSendMessage:
         assert data["assessment"]["result_json"]["escalate"] is True
         assert data["assessment"]["result_json"]["acuity"] == 1
 
-        # Incident should now be ESCALATED
         inc_res = client.get(f"/api/triage/incidents/{inc_id}")
-        assert inc_res.json()["status"] == "ESCALATED"
+        assert inc_res.json()["status"] == IncidentStatus.ESCALATED.value
 
     def test_send_message_minor_complaint(self, client):
         inc_id = self._create_incident(client)
@@ -241,7 +286,7 @@ class TestSendMessage:
 class TestTimeline:
     def test_empty_timeline(self, client):
         create_res = client.post(
-            "/api/triage/incidents", json={"domain": "medical"}
+            "/api/triage/incidents", json={"domain": Domain.MEDICAL.value}
         )
         inc_id = create_res.json()["id"]
 
@@ -256,7 +301,7 @@ class TestTimeline:
 
     def test_timeline_after_messages(self, client):
         create_res = client.post(
-            "/api/triage/incidents", json={"domain": "medical"}
+            "/api/triage/incidents", json={"domain": Domain.MEDICAL.value}
         )
         inc_id = create_res.json()["id"]
 
@@ -268,7 +313,6 @@ class TestTimeline:
         res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
         data = res.json()
         assert len(data["events"]) == 3
-        # All events share the same trace_id
         trace_ids = set(e["trace_id"] for e in data["events"])
         assert len(trace_ids) == 1
 
@@ -280,7 +324,7 @@ class TestTimeline:
 class TestVoiceEndpoint:
     def _create_incident(self, client) -> str:
         res = client.post(
-            "/api/triage/incidents", json={"domain": "medical"}
+            "/api/triage/incidents", json={"domain": Domain.MEDICAL.value}
         )
         return res.json()["id"]
 
@@ -294,7 +338,6 @@ class TestVoiceEndpoint:
         data = res.json()
         assert "transcript" in data
         assert "response_text" in data
-        # Note: transcript may be empty if STT fails with fake audio bytes
 
     def test_voice_nonexistent_incident(self, client):
         res = client.post(

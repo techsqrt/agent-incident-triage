@@ -32,6 +32,14 @@ class IncidentRepository:
     def __init__(self, engine: Engine):
         self.engine = engine
 
+    def _parse_json_field(self, value, default):
+        """Parse JSON field - handles both string and already-parsed dict."""
+        if value is None:
+            return default
+        if isinstance(value, dict):
+            return value
+        return json.loads(value)
+
     def create(
         self,
         domain: str,
@@ -59,6 +67,7 @@ class IncidentRepository:
             "domain": domain,
             "status": "OPEN",
             "mode": mode,
+            "severity": "UNASSIGNED",
             "created_at": now,
             "updated_at": now,
             "ts_escalated": None,
@@ -80,8 +89,8 @@ class IncidentRepository:
             row = result.mappings().first()
             if row:
                 d = dict(row)
-                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
-                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                d["diagnostic"] = self._parse_json_field(d.get("diagnostic"), {})
+                d["history"] = self._parse_json_field(d.get("history"), {"interactions": []})
                 return d
             return None
 
@@ -115,7 +124,7 @@ class IncidentRepository:
             row = result.first()
             if not row:
                 return
-            history = json.loads(row[0]) if row[0] else {"interactions": []}
+            history = self._parse_json_field(row[0], {"interactions": []})
             history["interactions"].append(interaction)
             conn.execute(
                 update(triage_incidents)
@@ -135,7 +144,7 @@ class IncidentRepository:
             row = result.first()
             if not row:
                 return
-            diagnostic = json.loads(row[0]) if row[0] else {}
+            diagnostic = self._parse_json_field(row[0], {})
             diagnostic.update(diagnostic_update)
             conn.execute(
                 update(triage_incidents)
@@ -154,8 +163,8 @@ class IncidentRepository:
             rows = []
             for row in result.mappings():
                 d = dict(row)
-                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
-                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                d["diagnostic"] = self._parse_json_field(d.get("diagnostic"), {})
+                d["history"] = self._parse_json_field(d.get("history"), {"interactions": []})
                 rows.append(d)
             return rows
 
@@ -163,6 +172,9 @@ class IncidentRepository:
         self,
         domain: str | None = None,
         status: str | None = None,
+        severity: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
@@ -173,17 +185,66 @@ class IncidentRepository:
                 query = query.where(triage_incidents.c.domain == domain)
             if status:
                 query = query.where(triage_incidents.c.status == status)
-            query = query.order_by(triage_incidents.c.created_at.desc())
+            if severity:
+                query = query.where(triage_incidents.c.severity == severity)
+            if updated_after:
+                query = query.where(triage_incidents.c.updated_at >= updated_after)
+            if updated_before:
+                query = query.where(triage_incidents.c.updated_at <= updated_before)
+            query = query.order_by(triage_incidents.c.updated_at.desc())
             query = query.limit(limit).offset(offset)
 
             result = conn.execute(query)
             rows = []
             for row in result.mappings():
                 d = dict(row)
-                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
-                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                d["diagnostic"] = self._parse_json_field(d.get("diagnostic"), {})
+                d["history"] = self._parse_json_field(d.get("history"), {"interactions": []})
                 rows.append(d)
             return rows
+
+    def update_severity(self, incident_id: str, severity: str) -> None:
+        """Update incident severity classification."""
+        with self.engine.begin() as conn:
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(severity=severity, updated_at=_now())
+            )
+
+    def update_mode(self, incident_id: str, mode: str) -> None:
+        """Update incident mode (chat/voice)."""
+        with self.engine.begin() as conn:
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(mode=mode, updated_at=_now())
+            )
+
+    def count_all(
+        self,
+        domain: str | None = None,
+        status: str | None = None,
+        severity: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
+    ) -> int:
+        """Count incidents matching filters."""
+        from sqlalchemy import func
+        with self.engine.connect() as conn:
+            query = select(func.count()).select_from(triage_incidents)
+            if domain:
+                query = query.where(triage_incidents.c.domain == domain)
+            if status:
+                query = query.where(triage_incidents.c.status == status)
+            if severity:
+                query = query.where(triage_incidents.c.severity == severity)
+            if updated_after:
+                query = query.where(triage_incidents.c.updated_at >= updated_after)
+            if updated_before:
+                query = query.where(triage_incidents.c.updated_at <= updated_before)
+            result = conn.execute(query)
+            return result.scalar() or 0
 
 
 class MessageRepository:

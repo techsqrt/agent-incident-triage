@@ -7,13 +7,27 @@ export interface DomainsResponse {
   domains: Domain[];
 }
 
+export type SeverityType = 'UNASSIGNED' | 'ESI-1' | 'ESI-2' | 'ESI-3' | 'ESI-4' | 'ESI-5';
+
+export interface HistoryInteraction {
+  type: string;
+  ts: string;
+  [key: string]: unknown;
+}
+
+export interface IncidentHistory {
+  interactions: HistoryInteraction[];
+}
+
 export interface Incident {
   id: string;
   domain: string;
   status: string;
   mode: string;
+  severity: SeverityType;
   created_at: string;
   updated_at: string;
+  history?: IncidentHistory;
 }
 
 export interface Message {
@@ -60,4 +74,9 @@ export interface MessageWithAssessmentResponse {
   message: Message;
   assistant_message: Message;
   assessment: Assessment | null;
+}
+
+export interface IncidentListResponse {
+  incidents: Incident[];
+  total: number;
 }
