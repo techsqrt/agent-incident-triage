@@ -4,10 +4,12 @@ set -e
 # Auto-detect repo root from script location
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# Parse --local flag
+# Parse flags
 LOCAL_MODE=false
+CLEAR_MODE=false
 for arg in "$@"; do
     [ "$arg" = "--local" ] && LOCAL_MODE=true
+    [ "$arg" = "--clear" ] && CLEAR_MODE=true
 done
 
 # Load environment variables from .env if it exists
@@ -44,6 +46,12 @@ if [ "$LOCAL_MODE" = true ]; then
     }
     trap cleanup INT TERM
 
+    # Clear database if --clear flag is set
+    if [ "$CLEAR_MODE" = true ]; then
+        echo "==> Clearing database (removing volumes)..."
+        $COMPOSE -f "$REPO_ROOT/infra/docker-compose.yml" down -v 2>/dev/null || true
+    fi
+
     echo "==> Starting Docker services (postgres, redis)"
     $COMPOSE -f "$REPO_ROOT/infra/docker-compose.yml" up -d
 
@@ -63,6 +71,11 @@ else
     if [ -z "$DATABASE_URL" ]; then
         echo "ERROR: DATABASE_URL not set. Use --local for local docker postgres."
         exit 1
+    fi
+
+    if [ "$CLEAR_MODE" = true ]; then
+        echo "WARNING: --clear flag only works with --local. Remote database not cleared."
+        echo "To clear remote DB, manually run: DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
     fi
 
     cleanup() {

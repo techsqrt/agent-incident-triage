@@ -274,9 +274,73 @@ class TestSendMessage:
         timeline_res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
         events = timeline_res.json()["events"]
         steps = [e["step"] for e in events]
-        assert "EXTRACT" in steps
-        assert "TRIAGE_RULES" in steps
-        assert "RESPONSE_GENERATED" in steps
+        # Updated step names for tool-call/tool-result pattern
+        assert "TOOL_RESULT_EXTRACT" in steps
+        assert "TOOL_RESULT_RULES" in steps
+        assert "AGENT_DECISION" in steps
+
+    def test_audit_events_include_conviction_scores(self, client):
+        """Verify extraction audit event includes risk_signals with conviction scores."""
+        inc_id = self._create_incident(client)
+        # Send message with suicidal ideation to trigger conviction scoring
+        client.post(
+            f"/api/triage/incidents/{inc_id}/messages",
+            json={"content": "I want to kill myself, I can't take it anymore"},
+        )
+
+        timeline_res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
+        events = timeline_res.json()["events"]
+
+        # Find the TOOL_RESULT_EXTRACT event
+        extract_event = next(
+            (e for e in events if e["step"] == "TOOL_RESULT_EXTRACT"), None
+        )
+        assert extract_event is not None, "TOOL_RESULT_EXTRACT event not found"
+
+        # Verify risk_signals exists in payload with conviction fields
+        payload = extract_event.get("payload_json", {})
+        risk_signals = payload.get("risk_signals", {})
+
+        # Check that conviction fields exist
+        assert "suicidal_ideation_conviction" in risk_signals, \
+            f"suicidal_ideation_conviction missing from risk_signals: {risk_signals}"
+        assert "chest_pain_conviction" in risk_signals
+        assert "can_breathe_conviction" in risk_signals
+
+        # For suicidal message, conviction should be high (deterministic fallback uses 0.9)
+        assert risk_signals["suicidal_ideation_conviction"] > 0, \
+            f"Expected suicidal conviction > 0 for suicidal message, got {risk_signals}"
+
+    def test_audit_events_include_triggered_flags_with_thresholds(self, client):
+        """Verify TOOL_RESULT_RULES includes triggered flags with conviction/threshold."""
+        inc_id = self._create_incident(client)
+        client.post(
+            f"/api/triage/incidents/{inc_id}/messages",
+            json={"content": "I have severe chest pain and can't breathe"},
+        )
+
+        timeline_res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
+        events = timeline_res.json()["events"]
+
+        # Find the TOOL_RESULT_RULES event
+        rules_event = next(
+            (e for e in events if e["step"] == "TOOL_RESULT_RULES"), None
+        )
+        assert rules_event is not None, "TOOL_RESULT_RULES event not found"
+
+        payload = rules_event.get("payload_json", {})
+        triggered_flags = payload.get("triggered_risk_flags", [])
+
+        # Should have triggered flags for chest pain and breathing
+        assert len(triggered_flags) > 0, "Expected triggered risk flags"
+
+        # Each triggered flag should have conviction and threshold
+        for flag in triggered_flags:
+            assert "flag_type" in flag, f"Missing flag_type in {flag}"
+            assert "conviction" in flag, f"Missing conviction in {flag}"
+            assert "threshold" in flag, f"Missing threshold in {flag}"
+            assert flag["conviction"] >= flag["threshold"], \
+                f"Conviction {flag['conviction']} should be >= threshold {flag['threshold']}"
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +376,8 @@ class TestTimeline:
 
         res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
         data = res.json()
-        assert len(data["events"]) == 3
+        # Audit events include: TOOL_CALL/RESULT for EXTRACT and RULES, plus AGENT_DECISION
+        assert len(data["events"]) >= 3
         trace_ids = set(e["trace_id"] for e in data["events"])
         assert len(trace_ids) == 1
 

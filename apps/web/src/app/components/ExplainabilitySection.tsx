@@ -17,11 +17,18 @@ interface StepInfo {
 }
 
 const STEP_EXPLANATIONS: Record<string, StepInfo> = {
+  // Voice pipeline
   STT: {
     emoji: '🎤',
     title: 'Voice Recognition',
     description: 'Your voice recording was converted to text so our system could understand what you said.',
   },
+  TTS: {
+    emoji: '🔊',
+    title: 'Voice Response',
+    description: 'The response was converted to speech for you to hear.',
+  },
+  // Legacy steps
   EXTRACT: {
     emoji: '📋',
     title: 'Information Gathering',
@@ -42,10 +49,36 @@ const STEP_EXPLANATIONS: Record<string, StepInfo> = {
     title: 'Response Ready',
     description: 'The assessment and response are now complete.',
   },
-  TTS: {
-    emoji: '🔊',
-    title: 'Voice Response',
-    description: 'The response was converted to speech for you to hear.',
+  // New TOOL_CALL/TOOL_RESULT pattern
+  TOOL_CALL_EXTRACT: {
+    emoji: '📤',
+    title: 'Calling Extraction',
+    description: 'Sending your message to the medical information extraction tool to identify symptoms, pain levels, and risk signals.',
+  },
+  TOOL_RESULT_EXTRACT: {
+    emoji: '📥',
+    title: 'Extraction Result',
+    description: 'Received parsed medical data: symptoms identified, risk signals with conviction scores, pain level, mental status.',
+  },
+  TOOL_CALL_RULES: {
+    emoji: '📤',
+    title: 'Calling Triage Rules',
+    description: 'Sending extracted data to the deterministic triage rules engine for ESI severity calculation.',
+  },
+  TOOL_RESULT_RULES: {
+    emoji: '📥',
+    title: 'Rules Result',
+    description: 'Received triage decision: ESI level (1-5), triggered red flags, escalation status, and recommended disposition.',
+  },
+  AGENT_DECISION: {
+    emoji: '🤖',
+    title: 'Agent Decision',
+    description: 'The AI agent reviewed all tool results and made a final decision on how to respond to your case.',
+  },
+  RISK_SIGNAL_EVALUATION: {
+    emoji: '⚠️',
+    title: 'Risk Signal Check',
+    description: 'Each risk signal (suicidal ideation, breathing issues, etc.) was evaluated against safety thresholds based on conviction scores.',
   },
 };
 
@@ -503,12 +536,42 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                         <div style={{ padding: '8px' }}>
                           {traceEvents.map((event, idx) => {
                             const info = STEP_EXPLANATIONS[event.step];
+                            // Extract conviction scores from payload if available
+                            const payload = event.payload_json as Record<string, unknown> | null;
+                            const riskSignals = payload?.risk_signals as Record<string, unknown> | undefined;
+                            const triggeredFlags = payload?.triggered_risk_flags as Array<{
+                              flag_type: string;
+                              conviction: number;
+                              threshold: number;
+                              human_explanation: string;
+                            }> | undefined;
+
+                            // Build conviction display for extraction results
+                            const convictionDisplay: string[] = [];
+                            if (riskSignals && (event.step === 'TOOL_RESULT_EXTRACT' || event.step === 'EXTRACT')) {
+                              const signals = [
+                                { key: 'suicidal_ideation_conviction', label: 'suicidal' },
+                                { key: 'self_harm_intent_conviction', label: 'self-harm' },
+                                { key: 'homicidal_ideation_conviction', label: 'homicidal' },
+                                { key: 'can_breathe_conviction', label: 'breathing' },
+                                { key: 'chest_pain_conviction', label: 'chest pain' },
+                                { key: 'neuro_deficit_conviction', label: 'neuro' },
+                                { key: 'bleeding_uncontrolled_conviction', label: 'bleeding' },
+                              ];
+                              for (const s of signals) {
+                                const val = riskSignals[s.key] as number | undefined;
+                                if (val !== undefined && val > 0) {
+                                  convictionDisplay.push(`${s.label}: ${(val * 100).toFixed(0)}%`);
+                                }
+                              }
+                            }
+
                             return (
                               <div
                                 key={event.id}
                                 style={{
                                   display: 'flex',
-                                  alignItems: 'center',
+                                  alignItems: 'flex-start',
                                   gap: '8px',
                                   padding: '6px 8px',
                                   background: idx % 2 === 0 ? '#fafafa' : '#fff',
@@ -516,13 +579,52 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                                 }}
                               >
                                 <span>{info?.emoji || '📌'}</span>
-                                <span style={{ fontWeight: 500 }}>{info?.title || event.step}</span>
-                                {event.model_used && (
-                                  <span style={{ color: '#666', fontSize: '11px' }}>({event.model_used})</span>
-                                )}
-                                {event.latency_ms !== null && event.latency_ms !== undefined && (
-                                  <span style={{ color: '#888', fontSize: '11px' }}>{event.latency_ms}ms</span>
-                                )}
+                                <div style={{ flex: 1 }}>
+                                  <span style={{ fontWeight: 500 }}>
+                                    {info?.title || event.step}
+                                  </span>
+                                  {info?.description && (
+                                    <span
+                                      style={{
+                                        marginLeft: '4px',
+                                        cursor: 'help',
+                                        opacity: 0.6,
+                                        fontSize: '11px',
+                                      }}
+                                      title={info.description}
+                                    >
+                                      ℹ️
+                                    </span>
+                                  )}
+                                  {event.model_used && (
+                                    <span style={{ color: '#666', fontSize: '11px', marginLeft: '8px' }}>({event.model_used})</span>
+                                  )}
+                                  {event.latency_ms !== null && event.latency_ms !== undefined && (
+                                    <span style={{ color: '#888', fontSize: '11px', marginLeft: '8px' }}>{event.latency_ms}ms</span>
+                                  )}
+
+                                  {/* Show conviction scores */}
+                                  {convictionDisplay.length > 0 && (
+                                    <div style={{ marginTop: '4px', fontSize: '11px', color: '#e67e22' }}>
+                                      📊 Conviction: {convictionDisplay.join(' | ')}
+                                    </div>
+                                  )}
+
+                                  {/* Show triggered risk flags with thresholds */}
+                                  {triggeredFlags && triggeredFlags.length > 0 && (
+                                    <div style={{ marginTop: '4px', fontSize: '11px' }}>
+                                      {triggeredFlags.map((tf, i) => (
+                                        <div
+                                          key={i}
+                                          style={{ color: '#c0392b', marginTop: '2px' }}
+                                          title={tf.human_explanation}
+                                        >
+                                          ⚠️ {tf.flag_type}: {(tf.conviction * 100).toFixed(0)}% (threshold: {(tf.threshold * 100).toFixed(0)}%)
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -555,13 +657,29 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                 <div style={{ marginTop: '8px' }}>
                   {events.length > 0 ? events.map((e, i) => {
                     const stepDescriptions: Record<string, string> = {
-                      STT: 'Voice → Text',
+                      STT: 'Voice → Text (OpenAI Whisper)',
                       EXTRACT: 'Parse symptoms & vitals',
                       TRIAGE_RULES: 'ESI rules (deterministic)',
                       GENERATE: 'Generate response',
-                      TTS: 'Text → Voice',
+                      TTS: 'Text → Voice (OpenAI TTS)',
                       RESPONSE_GENERATED: 'Generate response',
+                      TOOL_CALL_EXTRACT: 'Agent → Extraction tool',
+                      TOOL_RESULT_EXTRACT: 'Extraction → symptoms, risk signals + conviction',
+                      TOOL_CALL_RULES: 'Agent → Triage rules engine',
+                      TOOL_RESULT_RULES: 'Rules → ESI, red flags, disposition',
+                      AGENT_DECISION: 'Agent final decision',
+                      RISK_SIGNAL_EVALUATION: 'Conviction threshold check',
                     };
+
+                    // Extract conviction info from payload
+                    const payload = e.payload_json as Record<string, unknown> | null;
+                    const riskSignals = payload?.risk_signals as Record<string, unknown> | undefined;
+                    const triggeredFlags = payload?.triggered_risk_flags as Array<{
+                      flag_type: string;
+                      conviction: number;
+                      threshold: number;
+                    }> | undefined;
+
                     return (
                       <div key={i} style={{ marginBottom: '8px', paddingLeft: '8px', borderLeft: '2px solid #444' }}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -578,6 +696,28 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                         <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
                           {stepDescriptions[e.step] || 'Processing step'}
                         </div>
+                        {/* Show conviction scores in technical view */}
+                        {riskSignals && (e.step === 'TOOL_RESULT_EXTRACT' || e.step === 'EXTRACT') && (
+                          <div style={{ color: '#e5c07b', fontSize: '11px', marginTop: '2px' }}>
+                            conviction: {[
+                              ['suicidal_ideation_conviction', 'sui'],
+                              ['self_harm_intent_conviction', 'sh'],
+                              ['can_breathe_conviction', 'breath'],
+                              ['chest_pain_conviction', 'chest'],
+                              ['neuro_deficit_conviction', 'neuro'],
+                              ['bleeding_uncontrolled_conviction', 'bleed'],
+                            ].map(([key, label]) => {
+                              const val = riskSignals[key] as number | undefined;
+                              return val !== undefined ? `${label}=${(val * 100).toFixed(0)}%` : null;
+                            }).filter(Boolean).join(', ') || 'none'}
+                          </div>
+                        )}
+                        {/* Show triggered flags */}
+                        {triggeredFlags && triggeredFlags.length > 0 && (
+                          <div style={{ color: '#e06c75', fontSize: '11px', marginTop: '2px' }}>
+                            triggered: {triggeredFlags.map(f => `${f.flag_type}(${(f.conviction * 100).toFixed(0)}%≥${(f.threshold * 100).toFixed(0)}%)`).join(', ')}
+                          </div>
+                        )}
                       </div>
                     );
                   }) : (

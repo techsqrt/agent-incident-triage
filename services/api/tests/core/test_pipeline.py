@@ -103,8 +103,9 @@ class TestVoicePipeline:
 
         steps = [e["step"] for e in events]
         assert "STT" in steps
-        assert "EXTRACT" in steps
-        assert "TRIAGE_RULES" in steps
+        # Updated step names for tool-call/tool-result pattern
+        assert "TOOL_RESULT_EXTRACT" in steps
+        assert "TOOL_RESULT_RULES" in steps
         assert "GENERATE" in steps
         assert "TTS" in steps
 

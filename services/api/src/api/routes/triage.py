@@ -427,11 +427,76 @@ def send_message(
         extract_model = "deterministic (fallback)"
     extract_ms = int((time.monotonic() - t0) * 1000)
 
+    # Log extraction as tool call/result
+    risk_signals_summary = {}
+    if hasattr(extraction, 'risk_signals') and extraction.risk_signals:
+        rs = extraction.risk_signals
+        risk_signals_summary = {
+            # Psychiatric signals
+            "suicidal_ideation": rs.suicidal_ideation,
+            "suicidal_ideation_conviction": rs.suicidal_ideation_conviction,
+            "self_harm_intent": rs.self_harm_intent,
+            "self_harm_intent_conviction": rs.self_harm_intent_conviction,
+            "homicidal_ideation": rs.homicidal_ideation,
+            "homicidal_ideation_conviction": rs.homicidal_ideation_conviction,
+            # Physical signals
+            "chest_pain": rs.chest_pain,
+            "chest_pain_conviction": rs.chest_pain_conviction,
+            "can_breathe": rs.can_breathe,
+            "can_breathe_conviction": rs.can_breathe_conviction,
+            "neuro_deficit": rs.neuro_deficit,
+            "neuro_deficit_conviction": rs.neuro_deficit_conviction,
+            "bleeding_uncontrolled": rs.bleeding_uncontrolled,
+            "bleeding_uncontrolled_conviction": rs.bleeding_uncontrolled_conviction,
+            # Derived
+            "red_flags_detected": [f.value for f in rs.red_flags_detected] if rs.red_flags_detected else [],
+            "missing_fields": rs.missing_fields,
+        }
+
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
-        step="EXTRACT",
-        payload_json=redact_dict(extraction.model_dump()),
+        step="TOOL_CALL_EXTRACT",
+        payload_json={
+            "tool": "extract_structured",
+            "schema_version": "1.0",
+            "human_explanation": "Extracting structured medical information from patient message.",
+        },
+        model_used=extract_model,
+        latency_ms=0,
+    )
+
+    # Build human explanation for risk signals
+    risk_explanation_parts = []
+    if extraction.risk_signals:
+        rs = extraction.risk_signals
+        if rs.suicidal_ideation or rs.suicidal_ideation_conviction > 0:
+            risk_explanation_parts.append(f"suicidal_ideation: {rs.suicidal_ideation} (conviction: {rs.suicidal_ideation_conviction:.1f})")
+        if rs.self_harm_intent or rs.self_harm_intent_conviction > 0:
+            risk_explanation_parts.append(f"self_harm: {rs.self_harm_intent} (conviction: {rs.self_harm_intent_conviction:.1f})")
+        if rs.chest_pain != "unknown" or rs.chest_pain_conviction > 0:
+            risk_explanation_parts.append(f"chest_pain: {rs.chest_pain} (conviction: {rs.chest_pain_conviction:.1f})")
+        if rs.can_breathe != "unknown" or rs.can_breathe_conviction > 0:
+            risk_explanation_parts.append(f"can_breathe: {rs.can_breathe} (conviction: {rs.can_breathe_conviction:.1f})")
+        if rs.neuro_deficit != "unknown" or rs.neuro_deficit_conviction > 0:
+            risk_explanation_parts.append(f"neuro_deficit: {rs.neuro_deficit} (conviction: {rs.neuro_deficit_conviction:.1f})")
+        if rs.bleeding_uncontrolled != "unknown" or rs.bleeding_uncontrolled_conviction > 0:
+            risk_explanation_parts.append(f"bleeding: {rs.bleeding_uncontrolled} (conviction: {rs.bleeding_uncontrolled_conviction:.1f})")
+
+    risk_explanation = "; ".join(risk_explanation_parts) if risk_explanation_parts else "No critical risk signals detected."
+
+    audit_repo.append(
+        incident_id=incident_id,
+        trace_id=trace_id,
+        step="TOOL_RESULT_EXTRACT",
+        payload_json={
+            "tool": "extract_structured",
+            "symptoms_count": len(extraction.symptoms),
+            "pain_scale": extraction.pain_scale,
+            "mental_status": extraction.mental_status,
+            "risk_signals": risk_signals_summary,
+            "human_explanation": f"Extracted {len(extraction.symptoms)} symptoms, pain scale {extraction.pain_scale or 'not provided'}, mental status: {extraction.mental_status}. Risk signals: {risk_explanation}",
+        },
         model_used=extract_model,
         latency_ms=extract_ms,
     )
@@ -441,11 +506,55 @@ def send_message(
     assessment_result = assess(extraction)
     rules_ms = int((time.monotonic() - t0) * 1000)
 
+    # Build human-readable explanation of rules result
+    triggered_flags_list = []
+    triggered_flags_names = []
+    if hasattr(assessment_result, 'triggered_risk_flags') and assessment_result.triggered_risk_flags:
+        for trf in assessment_result.triggered_risk_flags:
+            triggered_flags_list.append({
+                "flag_type": trf.flag_type.value,
+                "signal_value": trf.signal_value,
+                "conviction": trf.conviction,
+                "threshold": trf.threshold,
+                "human_explanation": trf.human_explanation,
+            })
+            triggered_flags_names.append(trf.flag_type.value)
+
+    rules_human_explanation = f"ESI-{assessment_result.acuity} triage level."
+    if assessment_result.escalate:
+        rules_human_explanation += " ESCALATION REQUIRED."
+    if triggered_flags_names:
+        rules_human_explanation += f" Triggered flags: {', '.join(triggered_flags_names)}."
+    if assessment_result.red_flags:
+        rules_human_explanation += f" {len(assessment_result.red_flags)} red flags detected."
+
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
-        step="TRIAGE_RULES",
-        payload_json={"acuity": assessment_result.acuity, "escalate": assessment_result.escalate},
+        step="TOOL_CALL_RULES",
+        payload_json={
+            "tool": "evaluate_rules",
+            "rule_set_version": "1.0",
+            "thresholds_version": "1.0",
+            "human_explanation": "Evaluating deterministic triage rules against extracted data.",
+        },
+        model_used="rules.py (deterministic)",
+        latency_ms=0,
+    )
+
+    audit_repo.append(
+        incident_id=incident_id,
+        trace_id=trace_id,
+        step="TOOL_RESULT_RULES",
+        payload_json={
+            "tool": "evaluate_rules",
+            "acuity": assessment_result.acuity,
+            "escalate": assessment_result.escalate,
+            "disposition": assessment_result.disposition,
+            "triggered_risk_flags": triggered_flags_list,
+            "red_flags_count": len(assessment_result.red_flags),
+            "human_explanation": rules_human_explanation,
+        },
         model_used="rules.py (deterministic)",
         latency_ms=rules_ms,
     )
@@ -500,11 +609,26 @@ def send_message(
         "model": "deterministic (rule-based)",
     })
 
+    # Determine action taken
+    if assessment_result.escalate:
+        action = "escalate"
+        action_reason = "Critical risk signals or red flags detected requiring immediate medical attention."
+    elif assessment_result.disposition == "discharge":
+        action = "advise"
+        action_reason = "Minor symptoms with no concerning findings. Providing self-care guidance."
+    else:
+        action = "ask"
+        action_reason = "Need more information to complete triage assessment."
+
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
-        step="RESPONSE_GENERATED",
-        payload_json={"disposition": assessment_result.disposition},
+        step="AGENT_DECISION",
+        payload_json={
+            "action": action,
+            "disposition": assessment_result.disposition,
+            "human_explanation": action_reason,
+        },
         model_used="deterministic (rule-based)",
         latency_ms=response_ms,
     )
@@ -642,11 +766,31 @@ def _generate_response(
     extraction: MedicalExtraction,
     assessment,
 ) -> str:
-    """Generate a deterministic assistant response for text chat."""
-    if assessment.escalate:
-        return (
+    """Generate a deterministic assistant response for text chat.
+
+    SAFETY: If any red flags or triggered risk flags exist, we NEVER
+    return a "minor concern" message. Escalation takes priority.
+    """
+    # Check for escalation - either explicit or via risk flags
+    has_risk_flags = getattr(assessment, 'triggered_risk_flags', None) and len(assessment.triggered_risk_flags) > 0
+    has_red_flags = assessment.red_flags and len(assessment.red_flags) > 0
+
+    if assessment.escalate or has_risk_flags:
+        # Build escalation message with reason if available
+        base_msg = (
             "Based on what you've told me, this requires immediate medical attention. "
             "I'm escalating your case to a medical professional right away."
+        )
+        # Add specific reason if we have triggered risk flags
+        if has_risk_flags and hasattr(assessment, 'escalation_reason') and assessment.escalation_reason:
+            return f"{base_msg}\n\nReason: {assessment.escalation_reason}"
+        return base_msg
+
+    # SAFETY: Never say "minor concern" if there are any red flags
+    if has_red_flags:
+        return (
+            "I've noted some concerns in what you've described. "
+            "Please continue to describe your symptoms so I can complete your assessment."
         )
 
     if assessment.disposition == "discharge":

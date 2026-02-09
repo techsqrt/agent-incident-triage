@@ -56,17 +56,46 @@ The rules engine scans for dangerous keywords and conditions. Some examples:
 
 Full list and logic: [rules.py](services/api/src/api/domains/medical/rules.py)
 
+## Risk Signals (Conviction-Based Escalation)
+
+Beyond keyword matching, the system extracts **structured risk signals** with confidence scores. Each signal has:
+- A value (true/false or yes/no/unknown)
+- A conviction score (0.0 to 1.0) indicating model confidence
+
+**Critical signals extracted:**
+| Signal | Threshold | Trigger |
+|--------|-----------|---------|
+| Suicidal ideation | 0.2 | Very low threshold — escalate even with slight suspicion |
+| Self-harm intent | 0.2 | Very low threshold — safety first |
+| Homicidal ideation | 0.4 | Moderate threshold |
+| Cannot breathe | 0.5 | Value = "no" OR conviction >= threshold |
+| Chest pain | 0.5 | Value = "yes" OR conviction >= threshold |
+| Neurological deficit | 0.5 | Value = "yes" OR conviction >= threshold |
+| Uncontrolled bleeding | 0.5 | Value = "yes" OR conviction >= threshold |
+
+**How it works:**
+1. LLM extracts structured data including risk signals with conviction scores
+2. Deterministic rules evaluate each signal against thresholds
+3. If ANY critical signal triggers, the case is escalated immediately
+4. The response NEVER says "minor concern" if any risk flag is triggered
+
+This two-layer system (keywords + conviction thresholds) ensures dangerous cases are caught even when phrased ambiguously (e.g., "I want to finish with myself").
+
 ## Quick start
 
 ```bash
-./install.sh     # Install dependencies
-cp .env.example .env.local   # Add your OPENAI_API_KEY
-./run.sh         # Start everything (Postgres + API + Web)
+./install.sh          # Install dependencies
+cp .env.example .env  # Add your OPENAI_API_KEY
+./run.sh --local      # Start everything with local Docker Postgres
 ```
 
 - Web: http://localhost:3000
-- API: http://127.0.0.1:8000
-- API docs: http://127.0.0.1:8000/docs
+- API: http://localhost:8000
+- API docs: http://localhost:8000/docs
+
+**Options:**
+- `./run.sh --local` — Uses local Docker Postgres (recommended for development)
+- `./run.sh` — Uses DATABASE_URL from .env (for production/remote DB)
 
 ## Testing
 

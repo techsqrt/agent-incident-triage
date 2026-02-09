@@ -22,9 +22,12 @@ Escalation: acuity 1 or 2 → escalate to a human professional immediately.
 from __future__ import annotations
 
 from services.api.src.api.domains.medical.schemas import (
+    CriticalRedFlagType,
     MedicalAssessment,
     MedicalExtraction,
     RedFlag,
+    RiskSignals,
+    TriggeredRiskFlag,
 )
 
 # ---------------------------------------------------------------------------
@@ -78,6 +81,129 @@ _RED_FLAG_KEYWORDS = {
     "severe allergic reaction": "Severe allergic reaction",
     "overdose": "Possible overdose",
 }
+
+# ---------------------------------------------------------------------------
+# Risk signal conviction thresholds for deterministic escalation
+#
+# These thresholds are CONSERVATIVE — low thresholds for high-risk signals
+# mean we escalate even with moderate confidence. Safety first.
+# ---------------------------------------------------------------------------
+
+RISK_SIGNAL_THRESHOLDS = {
+    # Psychiatric signals — very low threshold (escalate even with slight suspicion)
+    CriticalRedFlagType.SUICIDAL_IDEATION: 0.2,
+    CriticalRedFlagType.SELF_HARM: 0.2,
+    CriticalRedFlagType.HOMICIDAL_IDEATION: 0.4,
+
+    # Physical signals — moderate threshold
+    CriticalRedFlagType.CANNOT_BREATHE: 0.5,
+    CriticalRedFlagType.CHEST_PAIN: 0.5,
+    CriticalRedFlagType.NEURO_DEFICIT: 0.5,
+    CriticalRedFlagType.BLEEDING_UNCONTROLLED: 0.5,
+}
+
+# Human-readable explanations for each triggered flag
+_RISK_FLAG_EXPLANATIONS = {
+    CriticalRedFlagType.SUICIDAL_IDEATION: "Patient may be expressing suicidal thoughts; policy requires immediate escalation.",
+    CriticalRedFlagType.SELF_HARM: "Patient may be expressing intent to self-harm; policy requires immediate escalation.",
+    CriticalRedFlagType.HOMICIDAL_IDEATION: "Patient may be expressing intent to harm others; policy requires immediate escalation.",
+    CriticalRedFlagType.CANNOT_BREATHE: "Patient reports difficulty breathing; this is a potential emergency.",
+    CriticalRedFlagType.CHEST_PAIN: "Patient reports chest pain; cardiac emergency must be ruled out.",
+    CriticalRedFlagType.NEURO_DEFICIT: "Patient shows signs of neurological deficit; possible stroke or emergency.",
+    CriticalRedFlagType.BLEEDING_UNCONTROLLED: "Patient reports uncontrolled bleeding; hemorrhage risk.",
+}
+
+
+def evaluate_risk_signals(risk_signals: RiskSignals) -> list[TriggeredRiskFlag]:
+    """Evaluate risk signals against thresholds and return triggered flags.
+
+    This is the second layer of deterministic escalation.
+    A flag is triggered if:
+    - The signal value indicates danger (true for bool, "yes"/"no" for tri-state) OR
+    - The conviction score exceeds the threshold for that flag type
+
+    Returns list of triggered flags with human-readable explanations.
+    """
+    triggered: list[TriggeredRiskFlag] = []
+
+    # Suicidal ideation: escalate if true OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.SUICIDAL_IDEATION]
+    if risk_signals.suicidal_ideation or risk_signals.suicidal_ideation_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.SUICIDAL_IDEATION,
+            signal_value=str(risk_signals.suicidal_ideation),
+            conviction=risk_signals.suicidal_ideation_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.SUICIDAL_IDEATION],
+        ))
+
+    # Self-harm intent: escalate if true OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.SELF_HARM]
+    if risk_signals.self_harm_intent or risk_signals.self_harm_intent_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.SELF_HARM,
+            signal_value=str(risk_signals.self_harm_intent),
+            conviction=risk_signals.self_harm_intent_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.SELF_HARM],
+        ))
+
+    # Homicidal ideation: escalate if true OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.HOMICIDAL_IDEATION]
+    if risk_signals.homicidal_ideation or risk_signals.homicidal_ideation_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.HOMICIDAL_IDEATION,
+            signal_value=str(risk_signals.homicidal_ideation),
+            conviction=risk_signals.homicidal_ideation_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.HOMICIDAL_IDEATION],
+        ))
+
+    # Can't breathe: escalate if "no" OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.CANNOT_BREATHE]
+    if risk_signals.can_breathe == "no" or risk_signals.can_breathe_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.CANNOT_BREATHE,
+            signal_value=risk_signals.can_breathe,
+            conviction=risk_signals.can_breathe_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.CANNOT_BREATHE],
+        ))
+
+    # Chest pain: escalate if "yes" OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.CHEST_PAIN]
+    if risk_signals.chest_pain == "yes" or risk_signals.chest_pain_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.CHEST_PAIN,
+            signal_value=risk_signals.chest_pain,
+            conviction=risk_signals.chest_pain_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.CHEST_PAIN],
+        ))
+
+    # Neuro deficit: escalate if "yes" OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.NEURO_DEFICIT]
+    if risk_signals.neuro_deficit == "yes" or risk_signals.neuro_deficit_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.NEURO_DEFICIT,
+            signal_value=risk_signals.neuro_deficit,
+            conviction=risk_signals.neuro_deficit_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.NEURO_DEFICIT],
+        ))
+
+    # Uncontrolled bleeding: escalate if "yes" OR conviction >= threshold
+    threshold = RISK_SIGNAL_THRESHOLDS[CriticalRedFlagType.BLEEDING_UNCONTROLLED]
+    if risk_signals.bleeding_uncontrolled == "yes" or risk_signals.bleeding_uncontrolled_conviction >= threshold:
+        triggered.append(TriggeredRiskFlag(
+            flag_type=CriticalRedFlagType.BLEEDING_UNCONTROLLED,
+            signal_value=risk_signals.bleeding_uncontrolled,
+            conviction=risk_signals.bleeding_uncontrolled_conviction,
+            threshold=threshold,
+            human_explanation=_RISK_FLAG_EXPLANATIONS[CriticalRedFlagType.BLEEDING_UNCONTROLLED],
+        ))
+
+    return triggered
 
 
 def detect_red_flags(extraction: MedicalExtraction) -> list[RedFlag]:
@@ -200,12 +326,41 @@ def assess(extraction: MedicalExtraction) -> MedicalAssessment:
 
     This is the final decision maker. The LLM extracted the data,
     but this function decides: how urgent? escalate? discharge?
+
+    Two-layer escalation:
+    1. Keyword-based red flags (existing system)
+    2. Risk signal conviction thresholds (new system)
+
+    If EITHER layer triggers escalation, we escalate.
     """
+    # Layer 1: Keyword-based red flag detection
     red_flags = detect_red_flags(extraction)
+
+    # Layer 2: Risk signal conviction threshold evaluation
+    triggered_risk_flags = evaluate_risk_signals(extraction.risk_signals)
+
+    # Add any triggered risk flags to the keyword red flags list
+    # to ensure they're counted in acuity calculation
+    for trf in triggered_risk_flags:
+        red_flags.append(RedFlag(
+            name=trf.flag_type.value,
+            reason=trf.human_explanation,
+            severity="critical",
+        ))
+
+    # Compute acuity based on ALL detected red flags
     acuity = compute_acuity(extraction, red_flags)
 
-    # Acuity 1-2 = escalate immediately to a human
-    escalate = acuity <= 2
+    # Escalation: acuity 1-2 OR any critical risk signal triggered
+    escalate_by_acuity = acuity <= 2
+    escalate_by_risk = len(triggered_risk_flags) > 0
+    escalate = escalate_by_acuity or escalate_by_risk
+
+    # If risk signals triggered escalation, bump acuity to at least 2
+    if escalate_by_risk and acuity > 2:
+        acuity = 2
+
+    # Determine disposition
     if escalate:
         disposition = "escalate"
     elif acuity >= 4 and not red_flags:
@@ -213,6 +368,7 @@ def assess(extraction: MedicalExtraction) -> MedicalAssessment:
     else:
         disposition = "continue"
 
+    # Build summary
     flag_names = [f.name for f in red_flags]
     summary_parts = [f"ESI-{acuity}"]
     if red_flags:
@@ -220,10 +376,18 @@ def assess(extraction: MedicalExtraction) -> MedicalAssessment:
     if escalate:
         summary_parts.append("ESCALATE")
 
+    # Build escalation reason from triggered risk flags
+    escalation_reason = ""
+    if triggered_risk_flags:
+        reasons = [trf.human_explanation for trf in triggered_risk_flags]
+        escalation_reason = " ".join(reasons)
+
     return MedicalAssessment(
         acuity=acuity,
         escalate=escalate,
         red_flags=red_flags,
+        triggered_risk_flags=triggered_risk_flags,
+        escalation_reason=escalation_reason,
         disposition=disposition,
         summary=" | ".join(summary_parts),
     )

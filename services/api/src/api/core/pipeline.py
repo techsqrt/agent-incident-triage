@@ -136,11 +136,34 @@ def run_voice_pipeline(
     if settings.openai_api_key:
         extract_model = settings.openai_model_text
 
+    # Log extraction as tool call/result
+    risk_signals_summary = {}
+    if hasattr(extraction, 'risk_signals') and extraction.risk_signals:
+        rs = extraction.risk_signals
+        risk_signals_summary = {
+            "suicidal_ideation": rs.suicidal_ideation,
+            "suicidal_ideation_conviction": rs.suicidal_ideation_conviction,
+            "self_harm_intent": rs.self_harm_intent,
+            "self_harm_intent_conviction": rs.self_harm_intent_conviction,
+            "chest_pain": rs.chest_pain,
+            "chest_pain_conviction": rs.chest_pain_conviction,
+            "can_breathe": rs.can_breathe,
+            "can_breathe_conviction": rs.can_breathe_conviction,
+            "red_flags_detected": [f.value for f in rs.red_flags_detected] if rs.red_flags_detected else [],
+        }
+
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
-        step="EXTRACT",
-        payload_json=redact_dict(extraction.model_dump()),
+        step="TOOL_RESULT_EXTRACT",
+        payload_json={
+            "tool": "extract_structured",
+            "symptoms_count": len(extraction.symptoms),
+            "pain_scale": extraction.pain_scale,
+            "mental_status": extraction.mental_status,
+            "risk_signals": risk_signals_summary,
+            "human_explanation": f"Extracted {len(extraction.symptoms)} symptoms from voice input.",
+        },
         latency_ms=extract_ms,
         model_used=extract_model,
     )
@@ -150,12 +173,30 @@ def run_voice_pipeline(
     assessment = assess(extraction)
     rules_ms = int((time.monotonic() - t0) * 1000)
 
+    # Build human-readable explanation
+    triggered_flags_list = []
+    if hasattr(assessment, 'triggered_risk_flags') and assessment.triggered_risk_flags:
+        triggered_flags_list = [trf.flag_type.value for trf in assessment.triggered_risk_flags]
+
+    rules_human_explanation = f"ESI-{assessment.acuity} triage level."
+    if assessment.escalate:
+        rules_human_explanation += " ESCALATION REQUIRED."
+    if triggered_flags_list:
+        rules_human_explanation += f" Triggered: {', '.join(triggered_flags_list)}."
+
     audit_repo.append(
         incident_id=incident_id,
         trace_id=trace_id,
-        step="TRIAGE_RULES",
-        payload_json={"acuity": assessment.acuity, "escalate": assessment.escalate},
+        step="TOOL_RESULT_RULES",
+        payload_json={
+            "tool": "evaluate_rules",
+            "acuity": assessment.acuity,
+            "escalate": assessment.escalate,
+            "triggered_risk_flags": triggered_flags_list,
+            "human_explanation": rules_human_explanation,
+        },
         latency_ms=rules_ms,
+        model_used="rules.py (deterministic)",
     )
 
     # Persist assessment
@@ -212,11 +253,30 @@ def run_voice_pipeline(
     # --------------- Step 4: Generate Response ---------------
     t0 = time.monotonic()
 
-    # Short-circuit: if escalation needed, don't ask follow-ups
-    if assessment.escalate:
-        response_text = (
+    # Check for triggered risk flags
+    has_risk_flags = (
+        hasattr(assessment, 'triggered_risk_flags')
+        and len(assessment.triggered_risk_flags) > 0
+    )
+    has_red_flags = assessment.red_flags and len(assessment.red_flags) > 0
+
+    # Short-circuit: if escalation needed OR risk flags triggered, use fixed message
+    if assessment.escalate or has_risk_flags:
+        base_msg = (
             "Based on what you've told me, this requires immediate medical attention. "
             "I'm escalating your case to a medical professional right away."
+        )
+        # Add escalation reason if available
+        if has_risk_flags and hasattr(assessment, 'escalation_reason') and assessment.escalation_reason:
+            response_text = f"{base_msg} {assessment.escalation_reason}"
+        else:
+            response_text = base_msg
+        token_usage = {}
+    elif has_red_flags:
+        # SAFETY: Don't let LLM generate if there are red flags
+        response_text = (
+            "I've noted some concerns in what you've described. "
+            "Please continue to describe your symptoms so I can complete your assessment."
         )
         token_usage = {}
     else:
