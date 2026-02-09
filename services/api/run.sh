@@ -9,6 +9,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Load environment variables from .env
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    echo "Loading $PROJECT_ROOT/.env"
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
 export DATABASE_URL="${DATABASE_URL:-postgresql://triage:triage@localhost:5432/triage_db}"
 export PYTHONPATH="$PROJECT_ROOT"
 export RUN_MIGRATIONS=false
