@@ -1,5 +1,6 @@
 """Triage API endpoints."""
 
+import json
 import logging
 import uuid
 
@@ -740,13 +741,19 @@ async def send_voice(
 
     assessment_resp = None
     if result.assessment_row:
+        # Parse result_json if it's a string (from DB storage)
+        raw_result = result.assessment_row["result_json"]
+        if isinstance(raw_result, str):
+            result_json = json.loads(raw_result)
+        elif isinstance(raw_result, dict):
+            result_json = raw_result
+        else:
+            result_json = {}
         assessment_resp = AssessmentResponse(
             id=result.assessment_row["id"],
             incident_id=incident_id,
             domain=result.assessment_row["domain"],
-            result_json=result.assessment_row["result_json"]
-            if isinstance(result.assessment_row["result_json"], dict)
-            else {},
+            result_json=result_json,
             created_at=_str_dt(result.assessment_row["created_at"]),
         )
 
