@@ -1,6 +1,7 @@
 import type {
   DomainsResponse,
   Incident,
+  IncidentListResponse,
   MessageWithAssessmentResponse,
   TimelineResponse,
   VoiceResponse,
@@ -22,6 +23,36 @@ export async function fetchDomains(): Promise<DomainsResponse> {
   const res = await fetch(`${API_BASE}/api/triage/domains`);
   if (!res.ok) {
     await throwApiError(res, `Failed to fetch domains: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface FetchIncidentsParams {
+  domain?: string;
+  status?: string;
+  severity?: string;
+  updatedAfter?: string;  // ISO datetime string
+  updatedBefore?: string; // ISO datetime string
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchIncidents(params: FetchIncidentsParams = {}): Promise<IncidentListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.domain) searchParams.set('domain', params.domain);
+  if (params.status) searchParams.set('status', params.status);
+  if (params.severity) searchParams.set('severity', params.severity);
+  if (params.updatedAfter) searchParams.set('updated_after', params.updatedAfter);
+  if (params.updatedBefore) searchParams.set('updated_before', params.updatedBefore);
+  if (params.limit) searchParams.set('limit', params.limit.toString());
+  if (params.offset) searchParams.set('offset', params.offset.toString());
+
+  const queryString = searchParams.toString();
+  const url = `${API_BASE}/api/triage/incidents${queryString ? `?${queryString}` : ''}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    await throwApiError(res, `Failed to fetch incidents: ${res.status}`);
   }
   return res.json();
 }

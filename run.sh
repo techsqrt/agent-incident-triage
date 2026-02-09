@@ -3,6 +3,13 @@ set -e
 
 # Auto-detect repo root from script location
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+# Load environment variables from .env if it exists
+if [ -f "$REPO_ROOT/.env" ]; then
+    set -a
+    . "$REPO_ROOT/.env"
+    set +a
+fi
 export REPO_ROOT
 export PYTHONPATH="$REPO_ROOT"
 
