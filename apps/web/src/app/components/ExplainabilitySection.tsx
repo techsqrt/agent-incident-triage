@@ -333,7 +333,7 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                           Acuity: <strong>ESI-{interaction.acuity as number}</strong> |
                           Severity: <strong style={{ color: SEVERITY_COLORS[assessSeverity] }}>{assessSeverity}</strong> |
                           Disposition: <strong>{interaction.disposition as string}</strong>
-                          {interaction.escalate && <span style={{ color: '#c0392b', marginLeft: '8px' }}>⚠️ ESCALATED</span>}
+                          {Boolean(interaction.escalate) && <span style={{ color: '#c0392b', marginLeft: '8px' }}>⚠️ ESCALATED</span>}
                         </p>
                       </div>
                     );
