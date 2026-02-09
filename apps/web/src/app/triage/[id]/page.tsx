@@ -7,11 +7,10 @@ import { fetchIncident, closeIncident, reopenIncident } from '@/lib/api';
 import type { Assessment, Incident } from '@/lib/types';
 import { ChatPanel } from '@/app/components/ChatPanel';
 import { VoiceRecorder } from '@/app/components/VoiceRecorder';
-import { Timeline } from '@/app/components/Timeline';
 import { AssessmentCard } from '@/app/components/AssessmentCard';
 import { ExplainabilitySection } from '@/app/components/ExplainabilitySection';
 
-type Tab = 'chat' | 'voice' | 'timeline';
+type Tab = 'chat' | 'voice';
 
 export default function IncidentDetailPage() {
   const params = useParams();
@@ -83,7 +82,6 @@ export default function IncidentDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'chat', label: 'Chat' },
     { key: 'voice', label: 'Voice' },
-    { key: 'timeline', label: 'Timeline' },
   ];
 
   const statusColors: Record<string, string> = {
@@ -207,9 +205,6 @@ export default function IncidentDetailPage() {
         </div>
         <div style={{ display: activeTab === 'voice' ? 'block' : 'none' }}>
           <VoiceRecorder incidentId={incidentId} onAssessment={handleAssessment} disabled={isClosed} />
-        </div>
-        <div style={{ display: activeTab === 'timeline' ? 'block' : 'none' }}>
-          <Timeline incidentId={incidentId} />
         </div>
       </div>
 
