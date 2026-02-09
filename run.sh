@@ -82,6 +82,15 @@ poetry run uvicorn services.api.src.api.main:app --reload --host 0.0.0.0 &
 API_PID=$!
 cd "$REPO_ROOT"
 
+echo "==> Waiting for API to be ready..."
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if curl -s http://127.0.0.1:8000/health >/dev/null 2>&1; then
+        echo "==> API is ready"
+        break
+    fi
+    sleep 0.5
+done
+
 echo "==> Starting web app"
 cd "$REPO_ROOT/apps/web"
 pnpm dev &
