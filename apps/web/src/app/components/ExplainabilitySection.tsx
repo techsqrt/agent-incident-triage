@@ -203,60 +203,6 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
 
       {expanded && (
         <>
-          {/* Process Steps */}
-          {uniqueSteps.length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
-                📊 What Happened Behind the Scenes
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {uniqueSteps.map((event, idx) => {
-                  const info = STEP_EXPLANATIONS[event.step];
-                  return (
-                    <div
-                      key={event.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        padding: '12px 16px',
-                        background: '#fff',
-                        borderRadius: '8px',
-                        border: '1px solid #e0e0e0',
-                      }}
-                    >
-                      <span style={{ fontSize: '24px', lineHeight: 1 }}>{info?.emoji || '📌'}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <strong style={{ fontSize: '14px', color: '#333' }}>
-                            {info?.title || event.step}
-                          </strong>
-                          {event.latency_ms && (
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                color: '#888',
-                                background: '#f0f0f0',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                              }}
-                            >
-                              {event.latency_ms}ms
-                            </span>
-                          )}
-                        </div>
-                        <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>
-                          {info?.description || 'Processing step completed.'}
-                        </p>
-                      </div>
-                      <span style={{ fontSize: '12px', color: '#aaa' }}>Step {idx + 1}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Severity Badge */}
           {severity && severity !== 'UNASSIGNED' && (
             <div style={{ marginBottom: '24px' }}>
@@ -524,6 +470,60 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
                       'Your symptoms suggest self-care measures may be appropriate.'}
                   </p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Process Steps */}
+          {uniqueSteps.length > 0 && (
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
+                📊 What Happened Behind the Scenes
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {uniqueSteps.map((event, idx) => {
+                  const info = STEP_EXPLANATIONS[event.step];
+                  return (
+                    <div
+                      key={event.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        padding: '12px 16px',
+                        background: '#fff',
+                        borderRadius: '8px',
+                        border: '1px solid #e0e0e0',
+                      }}
+                    >
+                      <span style={{ fontSize: '24px', lineHeight: 1 }}>{info?.emoji || '📌'}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <strong style={{ fontSize: '14px', color: '#333' }}>
+                            {info?.title || event.step}
+                          </strong>
+                          {event.latency_ms && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                color: '#888',
+                                background: '#f0f0f0',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              {event.latency_ms}ms
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>
+                          {info?.description || 'Processing step completed.'}
+                        </p>
+                      </div>
+                      <span style={{ fontSize: '12px', color: '#aaa' }}>Step {idx + 1}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
