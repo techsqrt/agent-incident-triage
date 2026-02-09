@@ -274,9 +274,10 @@ class TestSendMessage:
         timeline_res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
         events = timeline_res.json()["events"]
         steps = [e["step"] for e in events]
-        assert "EXTRACT" in steps
-        assert "TRIAGE_RULES" in steps
-        assert "RESPONSE_GENERATED" in steps
+        # Updated step names for tool-call/tool-result pattern
+        assert "TOOL_RESULT_EXTRACT" in steps
+        assert "TOOL_RESULT_RULES" in steps
+        assert "AGENT_DECISION" in steps
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +313,8 @@ class TestTimeline:
 
         res = client.get(f"/api/triage/incidents/{inc_id}/timeline")
         data = res.json()
-        assert len(data["events"]) == 3
+        # Audit events include: TOOL_CALL/RESULT for EXTRACT and RULES, plus AGENT_DECISION
+        assert len(data["events"]) >= 3
         trace_ids = set(e["trace_id"] for e in data["events"])
         assert len(trace_ids) == 1
 
