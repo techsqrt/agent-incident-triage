@@ -32,6 +32,14 @@ class IncidentRepository:
     def __init__(self, engine: Engine):
         self.engine = engine
 
+    def _parse_json_field(self, value, default):
+        """Parse JSON field - handles both string and already-parsed dict."""
+        if value is None:
+            return default
+        if isinstance(value, dict):
+            return value
+        return json.loads(value)
+
     def create(
         self,
         domain: str,
@@ -81,8 +89,8 @@ class IncidentRepository:
             row = result.mappings().first()
             if row:
                 d = dict(row)
-                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
-                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                d["diagnostic"] = self._parse_json_field(d.get("diagnostic"), {})
+                d["history"] = self._parse_json_field(d.get("history"), {"interactions": []})
                 return d
             return None
 
@@ -116,7 +124,7 @@ class IncidentRepository:
             row = result.first()
             if not row:
                 return
-            history = json.loads(row[0]) if row[0] else {"interactions": []}
+            history = self._parse_json_field(row[0], {"interactions": []})
             history["interactions"].append(interaction)
             conn.execute(
                 update(triage_incidents)
@@ -136,7 +144,7 @@ class IncidentRepository:
             row = result.first()
             if not row:
                 return
-            diagnostic = json.loads(row[0]) if row[0] else {}
+            diagnostic = self._parse_json_field(row[0], {})
             diagnostic.update(diagnostic_update)
             conn.execute(
                 update(triage_incidents)
@@ -155,8 +163,8 @@ class IncidentRepository:
             rows = []
             for row in result.mappings():
                 d = dict(row)
-                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
-                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                d["diagnostic"] = self._parse_json_field(d.get("diagnostic"), {})
+                d["history"] = self._parse_json_field(d.get("history"), {"interactions": []})
                 rows.append(d)
             return rows
 
@@ -190,8 +198,8 @@ class IncidentRepository:
             rows = []
             for row in result.mappings():
                 d = dict(row)
-                d["diagnostic"] = json.loads(d["diagnostic"]) if d.get("diagnostic") else {}
-                d["history"] = json.loads(d["history"]) if d.get("history") else {"interactions": []}
+                d["diagnostic"] = self._parse_json_field(d.get("diagnostic"), {})
+                d["history"] = self._parse_json_field(d.get("history"), {"interactions": []})
                 rows.append(d)
             return rows
 
