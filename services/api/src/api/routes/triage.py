@@ -432,14 +432,23 @@ def send_message(
     if hasattr(extraction, 'risk_signals') and extraction.risk_signals:
         rs = extraction.risk_signals
         risk_signals_summary = {
+            # Psychiatric signals
             "suicidal_ideation": rs.suicidal_ideation,
             "suicidal_ideation_conviction": rs.suicidal_ideation_conviction,
             "self_harm_intent": rs.self_harm_intent,
             "self_harm_intent_conviction": rs.self_harm_intent_conviction,
+            "homicidal_ideation": rs.homicidal_ideation,
+            "homicidal_ideation_conviction": rs.homicidal_ideation_conviction,
+            # Physical signals
             "chest_pain": rs.chest_pain,
             "chest_pain_conviction": rs.chest_pain_conviction,
             "can_breathe": rs.can_breathe,
             "can_breathe_conviction": rs.can_breathe_conviction,
+            "neuro_deficit": rs.neuro_deficit,
+            "neuro_deficit_conviction": rs.neuro_deficit_conviction,
+            "bleeding_uncontrolled": rs.bleeding_uncontrolled,
+            "bleeding_uncontrolled_conviction": rs.bleeding_uncontrolled_conviction,
+            # Derived
             "red_flags_detected": [f.value for f in rs.red_flags_detected] if rs.red_flags_detected else [],
             "missing_fields": rs.missing_fields,
         }
@@ -499,14 +508,23 @@ def send_message(
 
     # Build human-readable explanation of rules result
     triggered_flags_list = []
+    triggered_flags_names = []
     if hasattr(assessment_result, 'triggered_risk_flags') and assessment_result.triggered_risk_flags:
-        triggered_flags_list = [trf.flag_type.value for trf in assessment_result.triggered_risk_flags]
+        for trf in assessment_result.triggered_risk_flags:
+            triggered_flags_list.append({
+                "flag_type": trf.flag_type.value,
+                "signal_value": trf.signal_value,
+                "conviction": trf.conviction,
+                "threshold": trf.threshold,
+                "human_explanation": trf.human_explanation,
+            })
+            triggered_flags_names.append(trf.flag_type.value)
 
     rules_human_explanation = f"ESI-{assessment_result.acuity} triage level."
     if assessment_result.escalate:
         rules_human_explanation += " ESCALATION REQUIRED."
-    if triggered_flags_list:
-        rules_human_explanation += f" Triggered flags: {', '.join(triggered_flags_list)}."
+    if triggered_flags_names:
+        rules_human_explanation += f" Triggered flags: {', '.join(triggered_flags_names)}."
     if assessment_result.red_flags:
         rules_human_explanation += f" {len(assessment_result.red_flags)} red flags detected."
 
