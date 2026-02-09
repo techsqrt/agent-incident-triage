@@ -212,6 +212,15 @@ class IncidentRepository:
                 .values(severity=severity, updated_at=_now())
             )
 
+    def update_mode(self, incident_id: str, mode: str) -> None:
+        """Update incident mode (chat/voice)."""
+        with self.engine.begin() as conn:
+            conn.execute(
+                update(triage_incidents)
+                .where(triage_incidents.c.id == incident_id)
+                .values(mode=mode, updated_at=_now())
+            )
+
     def count_all(
         self,
         domain: str | None = None,

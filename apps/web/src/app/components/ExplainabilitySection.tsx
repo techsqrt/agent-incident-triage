@@ -544,19 +544,37 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
               }}
             >
               <div style={{ marginBottom: '12px' }}>
-                <span style={{ color: '#888' }}>// Models Used</span>
-                <div style={{ marginTop: '4px' }}>
-                  {events.filter(e => e.model_used).map((e, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ color: '#61dafb' }}>{e.step}:</span>
-                      <span style={{ color: '#98c379' }}>{e.model_used}</span>
-                      {e.latency_ms && (
-                        <span style={{ color: '#666' }}>({e.latency_ms}ms)</span>
-                      )}
-                    </div>
-                  ))}
-                  {events.filter(e => e.model_used).length === 0 && (
-                    <span style={{ color: '#666' }}>No AI models used (deterministic extraction)</span>
+                <span style={{ color: '#888' }}>// OpenAI Models & Processing Pipeline</span>
+                <div style={{ marginTop: '8px' }}>
+                  {events.length > 0 ? events.map((e, i) => {
+                    const stepDescriptions: Record<string, string> = {
+                      STT: 'Voice → Text',
+                      EXTRACT: 'Parse symptoms & vitals',
+                      TRIAGE_RULES: 'ESI rules (deterministic)',
+                      GENERATE: 'Generate response',
+                      TTS: 'Text → Voice',
+                      RESPONSE_GENERATED: 'Generate response',
+                    };
+                    return (
+                      <div key={i} style={{ marginBottom: '8px', paddingLeft: '8px', borderLeft: '2px solid #444' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#61dafb', fontWeight: 'bold' }}>{e.step}</span>
+                          {e.model_used && (
+                            <span style={{ color: '#98c379', background: '#2d3748', padding: '1px 6px', borderRadius: '3px' }}>
+                              {e.model_used}
+                            </span>
+                          )}
+                          {e.latency_ms && (
+                            <span style={{ color: '#888' }}>{e.latency_ms}ms</span>
+                          )}
+                        </div>
+                        <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
+                          {stepDescriptions[e.step] || 'Processing step'}
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <span style={{ color: '#666' }}>No processing steps recorded yet</span>
                   )}
                 </div>
               </div>

@@ -73,6 +73,10 @@ def run_voice_pipeline(
     incident = incident_repo.get(incident_id)
     result = PipelineResult(trace_id=trace_id)
 
+    # Update mode to 'voice' since this is a voice interaction
+    if incident and incident.get("mode") != "voice":
+        incident_repo.update_mode(incident_id, "voice")
+
     # --------------- Step 1: STT ---------------
     t0 = time.monotonic()
     try:
@@ -162,6 +166,45 @@ def run_voice_pipeline(
     )
     result.assessment_row = assessment_row
 
+    # Map acuity to severity and update
+    from services.api.src.api.schemas.enums import Severity
+    acuity_to_severity = {
+        1: Severity.ESI_1,
+        2: Severity.ESI_2,
+        3: Severity.ESI_3,
+        4: Severity.ESI_4,
+        5: Severity.ESI_5,
+    }
+    severity = acuity_to_severity.get(assessment.acuity, Severity.UNASSIGNED)
+    incident_repo.update_severity(incident_id, severity.value)
+
+    # Append user message (transcript) to history
+    def _str_dt(dt):
+        return dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    incident_repo.append_interaction(incident_id, {
+        "type": "user_message",
+        "ts": _str_dt(now),
+        "content": stt_result.text,
+        "source": "voice",
+        "stt_model": stt_result.model,
+    })
+
+    # Append assessment to history
+    incident_repo.append_interaction(incident_id, {
+        "type": "assessment",
+        "ts": _str_dt(now),
+        "assessment_id": assessment_row["id"],
+        "acuity": assessment.acuity,
+        "severity": severity.value,
+        "disposition": assessment.disposition,
+        "escalate": assessment.escalate,
+        "red_flags": [{"name": rf.name, "reason": rf.reason} for rf in assessment.red_flags],
+    })
+
     # Update incident status if escalation needed
     if assessment.escalate:
         incident_repo.update_status(incident_id, "ESCALATED")
@@ -218,6 +261,16 @@ def run_voice_pipeline(
         tts_model = "failed"
         result.audio_base64 = None
     tts_ms = int((time.monotonic() - t0) * 1000)
+
+    # Append assistant response to history (after TTS so we have the model info)
+    incident_repo.append_interaction(incident_id, {
+        "type": "assistant_message",
+        "ts": _str_dt(datetime.now(timezone.utc)),
+        "content": response_text,
+        "source": "voice",
+        "tts_model": tts_model,
+        "generate_model": extract_model,
+    })
 
     audit_repo.append(
         incident_id=incident_id,
