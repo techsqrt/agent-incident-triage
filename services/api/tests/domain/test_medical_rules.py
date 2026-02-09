@@ -4,9 +4,13 @@ from services.api.src.api.domains.medical.rules import (
     assess,
     compute_acuity,
     detect_red_flags,
+    evaluate_risk_signals,
+    RISK_SIGNAL_THRESHOLDS,
 )
 from services.api.src.api.domains.medical.schemas import (
+    CriticalRedFlagType,
     MedicalExtraction,
+    RiskSignals,
     VitalSigns,
 )
 
@@ -315,3 +319,177 @@ class TestAssess:
         result = assess(e)
         assert result.acuity == 1
         assert result.escalate is True
+
+
+# ---------------------------------------------------------------------------
+# Risk signal evaluation tests
+# ---------------------------------------------------------------------------
+
+class TestRiskSignalEvaluation:
+    """Tests for conviction-based risk signal evaluation."""
+
+    def test_suicidal_ideation_true_triggers(self):
+        """Self-harm phrase: suicidal_ideation=true should trigger escalation."""
+        signals = RiskSignals(
+            suicidal_ideation=True,
+            suicidal_ideation_conviction=0.9,
+            self_harm_intent=True,
+            self_harm_intent_conviction=0.9,
+        )
+        triggered = evaluate_risk_signals(signals)
+        flag_types = [t.flag_type for t in triggered]
+        assert CriticalRedFlagType.SUICIDAL_IDEATION in flag_types
+        assert CriticalRedFlagType.SELF_HARM in flag_types
+
+    def test_chest_pain_and_cannot_breathe_triggers(self):
+        """Chest pain + can't breathe should both trigger escalation."""
+        signals = RiskSignals(
+            chest_pain="yes",
+            chest_pain_conviction=0.8,
+            can_breathe="no",
+            can_breathe_conviction=0.7,
+        )
+        triggered = evaluate_risk_signals(signals)
+        flag_types = [t.flag_type for t in triggered]
+        assert CriticalRedFlagType.CHEST_PAIN in flag_types
+        assert CriticalRedFlagType.CANNOT_BREATHE in flag_types
+
+    def test_neuro_deficit_triggers(self):
+        """Neurological deficit should trigger escalation."""
+        signals = RiskSignals(
+            neuro_deficit="yes",
+            neuro_deficit_conviction=0.8,
+        )
+        triggered = evaluate_risk_signals(signals)
+        flag_types = [t.flag_type for t in triggered]
+        assert CriticalRedFlagType.NEURO_DEFICIT in flag_types
+
+    def test_low_conviction_suicidal_triggers(self):
+        """Low conviction (0.25) for suicidal_ideation should still trigger (threshold 0.2)."""
+        signals = RiskSignals(
+            suicidal_ideation=False,
+            suicidal_ideation_conviction=0.25,
+        )
+        triggered = evaluate_risk_signals(signals)
+        flag_types = [t.flag_type for t in triggered]
+        # Threshold is 0.2, so 0.25 should trigger
+        assert CriticalRedFlagType.SUICIDAL_IDEATION in flag_types
+
+    def test_safe_case_no_triggers(self):
+        """All signals false/unknown with low convictions should NOT trigger."""
+        signals = RiskSignals(
+            suicidal_ideation=False,
+            suicidal_ideation_conviction=0.1,
+            self_harm_intent=False,
+            self_harm_intent_conviction=0.1,
+            homicidal_ideation=False,
+            homicidal_ideation_conviction=0.1,
+            can_breathe="yes",
+            can_breathe_conviction=0.1,
+            chest_pain="no",
+            chest_pain_conviction=0.1,
+            neuro_deficit="no",
+            neuro_deficit_conviction=0.1,
+            bleeding_uncontrolled="no",
+            bleeding_uncontrolled_conviction=0.1,
+        )
+        triggered = evaluate_risk_signals(signals)
+        assert len(triggered) == 0
+
+    def test_homicidal_ideation_moderate_conviction_triggers(self):
+        """Homicidal ideation with 0.45 conviction should trigger (threshold 0.4)."""
+        signals = RiskSignals(
+            homicidal_ideation=False,
+            homicidal_ideation_conviction=0.45,
+        )
+        triggered = evaluate_risk_signals(signals)
+        flag_types = [t.flag_type for t in triggered]
+        assert CriticalRedFlagType.HOMICIDAL_IDEATION in flag_types
+
+    def test_bleeding_uncontrolled_triggers(self):
+        """Uncontrolled bleeding should trigger escalation."""
+        signals = RiskSignals(
+            bleeding_uncontrolled="yes",
+            bleeding_uncontrolled_conviction=0.6,
+        )
+        triggered = evaluate_risk_signals(signals)
+        flag_types = [t.flag_type for t in triggered]
+        assert CriticalRedFlagType.BLEEDING_UNCONTROLLED in flag_types
+
+
+class TestRiskSignalIntegration:
+    """Tests for risk signals integrated with full assessment."""
+
+    def test_risk_signals_cause_escalation(self):
+        """Risk signals should cause escalation even with no keyword red flags."""
+        e = MedicalExtraction(
+            chief_complaint="feeling bad",
+            risk_signals=RiskSignals(
+                suicidal_ideation=True,
+                suicidal_ideation_conviction=0.9,
+            ),
+        )
+        result = assess(e)
+        assert result.escalate is True
+        assert len(result.triggered_risk_flags) > 0
+
+    def test_escalated_includes_reason(self):
+        """Escalated assessment should include human-readable reason."""
+        e = MedicalExtraction(
+            chief_complaint="want to end it",
+            risk_signals=RiskSignals(
+                suicidal_ideation=True,
+                suicidal_ideation_conviction=0.95,
+                self_harm_intent=True,
+                self_harm_intent_conviction=0.9,
+            ),
+        )
+        result = assess(e)
+        assert result.escalate is True
+        assert result.escalation_reason != ""
+        assert "suicidal" in result.escalation_reason.lower() or "self-harm" in result.escalation_reason.lower()
+
+    def test_risk_signals_bump_acuity(self):
+        """Risk signal triggers should bump acuity to at least ESI-2."""
+        e = MedicalExtraction(
+            chief_complaint="headache",  # Would normally be ESI-5
+            risk_signals=RiskSignals(
+                suicidal_ideation=True,
+                suicidal_ideation_conviction=0.9,
+            ),
+        )
+        result = assess(e)
+        assert result.acuity <= 2  # Should be bumped up due to risk signal
+
+    def test_minor_concern_not_returned_when_escalated(self):
+        """Ensure 'minor concern' language is never used when escalated."""
+        e = MedicalExtraction(
+            chief_complaint="small cut",
+            symptoms=[],
+            risk_signals=RiskSignals(
+                chest_pain="yes",
+                chest_pain_conviction=0.8,
+            ),
+        )
+        result = assess(e)
+        assert result.escalate is True
+        # The assessment should indicate escalation, not "discharge"
+        assert result.disposition == "escalate"
+
+    def test_combined_keyword_and_risk_signals(self):
+        """Both keyword red flags and risk signals should be counted."""
+        e = MedicalExtraction(
+            chief_complaint="chest pain",  # Keyword red flag
+            symptoms=["shortness of breath"],  # Another keyword
+            risk_signals=RiskSignals(
+                chest_pain="yes",
+                chest_pain_conviction=0.9,
+                can_breathe="no",
+                can_breathe_conviction=0.8,
+            ),
+        )
+        result = assess(e)
+        assert result.escalate is True
+        assert result.acuity == 1  # Most critical
+        # Should have both keyword flags and risk signal flags
+        assert len(result.red_flags) >= 2
