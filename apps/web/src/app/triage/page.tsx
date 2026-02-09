@@ -7,6 +7,62 @@ import type { Domain } from '@/lib/types';
 import { DomainTabs } from '@/app/components/DomainTabs';
 import { IncidentsList } from '@/app/components/IncidentsList';
 
+function TechBadge({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <span
+      title={tooltip}
+      style={{
+        display: 'inline-block',
+        padding: '4px 10px',
+        margin: '3px',
+        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+        border: '1px solid #0f3460',
+        borderRadius: '12px',
+        fontSize: '11px',
+        color: '#e0e0e0',
+        cursor: 'help',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function HeroBanner() {
+  return (
+    <div
+      style={{
+        background: 'linear-gradient(135deg, #c0392b 0%, #8e44ad 100%)',
+        borderRadius: '12px',
+        padding: '24px',
+        marginBottom: '24px',
+        color: 'white',
+      }}
+    >
+      <h1 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '8px' }}>
+        Agent Incident Triage
+      </h1>
+      <p style={{ fontSize: '0.95rem', opacity: 0.95, marginBottom: '16px', maxWidth: '600px' }}>
+        AI-powered triage with conviction-based risk assessment, deterministic escalation rules, and full audit trail.
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+        <TechBadge label="Next.js 15" tooltip="React frontend with App Router, TypeScript, dynamic routes" />
+        <TechBadge label="FastAPI" tooltip="Python API with Pydantic validation, SQLAlchemy ORM" />
+        <TechBadge label="GPT-4o" tooltip="LLM extraction with structured output, Whisper STT, TTS" />
+        <TechBadge label="PostgreSQL" tooltip="Neon serverless Postgres with JSONB, full audit trail" />
+        <TechBadge label="Docker" tooltip="Multi-stage builds, Docker Compose for local dev" />
+        <TechBadge label="Vercel" tooltip="Frontend deployment with preview builds per PR" />
+        <TechBadge label="Railway" tooltip="API deployment with PostgreSQL addon" />
+        <TechBadge label="GitHub Actions" tooltip="CI/CD: pytest, TypeScript checks, linting" />
+        <TechBadge label="pytest" tooltip="146 unit/integration tests for API and rules" />
+        <TechBadge label="ESI Triage" tooltip="Emergency Severity Index levels 1-5" />
+        <TechBadge label="Risk Signals" tooltip="Conviction thresholds: 20% psychiatric, 50% physical" />
+        <TechBadge label="Voice" tooltip="Real-time recording, Whisper transcription, TTS playback" />
+      </div>
+    </div>
+  );
+}
+
 export default function TriagePage() {
   const router = useRouter();
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -58,12 +114,7 @@ export default function TriagePage() {
 
   return (
     <div style={{ padding: '32px', maxWidth: '900px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>
-        Triage Dashboard
-      </h1>
-      <p style={{ color: '#666', marginBottom: '24px' }}>
-        Select a domain to begin triage
-      </p>
+      <HeroBanner />
 
       <DomainTabs
         domains={domains}

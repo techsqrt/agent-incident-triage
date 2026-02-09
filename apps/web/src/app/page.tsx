@@ -61,40 +61,113 @@ function HeroBanner() {
 function HowItWorks() {
   return (
     <div style={{
-      padding: '24px',
+      padding: '28px',
       background: '#f8f9fa',
       borderRadius: '12px',
       border: '1px solid #e9ecef',
-      marginBottom: '24px',
     }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#333' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '24px', color: '#333' }}>
         How It Works
       </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-        <div style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#c0392b' }}>1. Describe Symptoms</div>
-          <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>
-            Chat or voice input. AI extracts symptoms, pain levels, and risk signals.
+
+      {/* Pipeline Steps */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '28px' }}>
+        <div style={{ padding: '20px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#c0392b', fontSize: '15px' }}>1. Input &amp; Transcription</div>
+          <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.6 }}>
+            Patient describes symptoms via <strong>text chat</strong> or <strong>voice recording</strong>.
+            Voice input uses <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>gpt-4o-transcribe</code> (Whisper)
+            for speech-to-text conversion. Model is configurable per deployment.
           </p>
         </div>
-        <div style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#c0392b' }}>2. Risk Analysis</div>
-          <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>
-            Each signal gets a conviction score. Thresholds trigger escalation.
+
+        <div style={{ padding: '20px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#c0392b', fontSize: '15px' }}>2. Medical Extraction</div>
+          <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.6 }}>
+            <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>gpt-4o</code> extracts structured data:
+            symptoms, pain scale (0-10), mental status, vitals, and <strong>risk signals</strong> with
+            conviction scores (0.0-1.0). Uses JSON schema validation for reliable output.
           </p>
         </div>
-        <div style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#c0392b' }}>3. ESI Classification</div>
-          <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>
-            Deterministic rules assign ESI 1-5. No LLM decides escalation.
+
+        <div style={{ padding: '20px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#c0392b', fontSize: '15px' }}>3. Conviction-Based Escalation</div>
+          <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.6 }}>
+            Each risk signal (chest pain, breathing issues, suicidal ideation) has a <strong>conviction score</strong>.
+            Deterministic rules compare against thresholds. If <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>conviction &gt;= threshold</code>,
+            the flag triggers. No LLM decides escalation.
           </p>
         </div>
-        <div style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#c0392b' }}>4. Audit Trail</div>
-          <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>
-            Every step logged. Full explainability for all decisions.
+
+        <div style={{ padding: '20px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#c0392b', fontSize: '15px' }}>4. ESI Classification</div>
+          <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.6 }}>
+            <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>rules.py</code> assigns
+            Emergency Severity Index (ESI 1-5) based on red flags count, pain level, mental status.
+            ESI-1/2 or any triggered risk flag → automatic escalation to human provider.
           </p>
         </div>
+
+        <div style={{ padding: '20px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#c0392b', fontSize: '15px' }}>5. Response Generation</div>
+          <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.6 }}>
+            AI generates contextual follow-up questions or escalation message.
+            For voice mode, <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>gpt-4o-mini-tts</code> converts
+            response to speech. Model choices configurable for cost/quality tradeoffs.
+          </p>
+        </div>
+
+        <div style={{ padding: '20px', background: '#fff', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#c0392b', fontSize: '15px' }}>6. Full Audit Trail</div>
+          <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.6 }}>
+            Every step logged with <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>TOOL_CALL</code> /
+            <code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '3px' }}>TOOL_RESULT</code> pattern:
+            model used, latency, token counts, human-readable explanations. Full explainability for compliance.
+          </p>
+        </div>
+      </div>
+
+      {/* Conviction Thresholds */}
+      <div style={{ marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>
+          Risk Signal Thresholds
+        </h3>
+        <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
+          Lower threshold = more sensitive (escalate with less certainty). Psychiatric signals use 20% to catch subtle hints.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ padding: '6px 12px', background: '#c0392b', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Suicidal Ideation: 20%
+          </span>
+          <span style={{ padding: '6px 12px', background: '#c0392b', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Self-Harm: 20%
+          </span>
+          <span style={{ padding: '6px 12px', background: '#e67e22', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Homicidal: 40%
+          </span>
+          <span style={{ padding: '6px 12px', background: '#f39c12', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Chest Pain: 50%
+          </span>
+          <span style={{ padding: '6px 12px', background: '#f39c12', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Breathing: 50%
+          </span>
+          <span style={{ padding: '6px 12px', background: '#f39c12', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Neurological: 50%
+          </span>
+          <span style={{ padding: '6px 12px', background: '#f39c12', color: '#fff', borderRadius: '4px', fontSize: '12px' }}>
+            Bleeding: 50%
+          </span>
+        </div>
+      </div>
+
+      {/* Architecture Note */}
+      <div style={{ padding: '16px', background: '#fff3cd', borderRadius: '8px', border: '1px solid #ffc107' }}>
+        <p style={{ fontSize: '13px', color: '#856404', margin: 0 }}>
+          <strong>Safety-First Architecture:</strong> The LLM is treated as an &quot;untrusted helper&quot; —
+          it extracts information and generates responses, but all safety-critical escalation decisions
+          are made by deterministic rules with explicit thresholds. This prevents prompt injection from
+          bypassing medical safety checks.
+        </p>
       </div>
     </div>
   );
@@ -104,9 +177,8 @@ export default function HomePage() {
   return (
     <div style={{ padding: '32px', maxWidth: '900px', margin: '0 auto' }}>
       <HeroBanner />
-      <HowItWorks />
 
-      <div style={{ textAlign: 'center' }}>
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <Link
           href="/triage"
           style={{
@@ -123,6 +195,8 @@ export default function HomePage() {
           Open Triage Dashboard
         </Link>
       </div>
+
+      <HowItWorks />
     </div>
   );
 }
