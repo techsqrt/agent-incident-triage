@@ -30,6 +30,7 @@ playwright-report/
 *.swp
 *.swo
 CLAUDE.md
+PLAN.md
 
 # Environment
 .env
