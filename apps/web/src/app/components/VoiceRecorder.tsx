@@ -24,9 +24,10 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '';
 interface VoiceRecorderProps {
   incidentId: string;
   onAssessment?: (assessment: Assessment) => void;
+  disabled?: boolean;
 }
 
-export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) {
+export function VoiceRecorder({ incidentId, onAssessment, disabled = false }: VoiceRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -286,20 +287,20 @@ export function VoiceRecorder({ incidentId, onAssessment }: VoiceRecorderProps) 
         {!recording ? (
           <button
             onClick={startRecording}
-            disabled={processing || !canRecord}
+            disabled={processing || !canRecord || disabled}
             style={{
               padding: '12px 24px',
               background: '#c0392b',
               color: '#fff',
               border: 'none',
               borderRadius: '6px',
-              cursor: processing || !canRecord ? 'not-allowed' : 'pointer',
-              opacity: processing || !canRecord ? 0.5 : 1,
+              cursor: processing || !canRecord || disabled ? 'not-allowed' : 'pointer',
+              opacity: processing || !canRecord || disabled ? 0.5 : 1,
               fontWeight: 'bold',
               fontSize: '14px',
             }}
           >
-            {processing ? 'Processing...' : 'Start Recording'}
+            {disabled ? 'Incident Closed' : processing ? 'Processing...' : 'Start Recording'}
           </button>
         ) : (
           <button

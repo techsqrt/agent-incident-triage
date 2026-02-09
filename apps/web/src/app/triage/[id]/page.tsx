@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { fetchIncident } from '@/lib/api';
+import { fetchIncident, closeIncident, reopenIncident } from '@/lib/api';
 import type { Assessment, Incident } from '@/lib/types';
 import { ChatPanel } from '@/app/components/ChatPanel';
 import { VoiceRecorder } from '@/app/components/VoiceRecorder';
@@ -20,6 +20,7 @@ export default function IncidentDetailPage() {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,8 +32,31 @@ export default function IncidentDetailPage() {
 
   function handleAssessment(a: Assessment) {
     setAssessment(a);
-    // Refresh incident status
     fetchIncident(incidentId).then(setIncident).catch(() => {});
+  }
+
+  async function handleClose() {
+    setActionLoading(true);
+    try {
+      const updated = await closeIncident(incidentId);
+      setIncident(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to close');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleReopen() {
+    setActionLoading(true);
+    try {
+      const updated = await reopenIncident(incidentId);
+      setIncident(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reopen');
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   if (loading) {
@@ -54,11 +78,19 @@ export default function IncidentDetailPage() {
     );
   }
 
+  const isClosed = incident.status === 'CLOSED';
   const tabs: { key: Tab; label: string }[] = [
     { key: 'chat', label: 'Chat' },
     { key: 'voice', label: 'Voice' },
     { key: 'timeline', label: 'Timeline' },
   ];
+
+  const statusColors: Record<string, string> = {
+    OPEN: '#27ae60',
+    TRIAGE_READY: '#f39c12',
+    ESCALATED: '#c0392b',
+    CLOSED: '#7f8c8d',
+  };
 
   return (
     <div style={{ padding: '32px', maxWidth: '900px', margin: '0 auto' }}>
@@ -68,24 +100,77 @@ export default function IncidentDetailPage() {
         </Link>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>
             Incident {incidentId.slice(0, 8)}
           </h1>
           <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0' }}>
-            {incident.domain} | {incident.mode === 'B' ? 'Modular Pipeline' : 'Realtime'} |{' '}
+            {incident.domain} | {incident.mode} |{' '}
             <span
               style={{
-                color: incident.status === 'ESCALATED' ? '#c0392b' : '#333',
-                fontWeight: incident.status === 'ESCALATED' ? 'bold' : 'normal',
+                color: statusColors[incident.status] || '#333',
+                fontWeight: 'bold',
               }}
             >
               {incident.status}
             </span>
           </p>
         </div>
+
+        <div>
+          {isClosed ? (
+            <button
+              onClick={handleReopen}
+              disabled={actionLoading}
+              style={{
+                padding: '8px 16px',
+                background: '#27ae60',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: actionLoading ? 'not-allowed' : 'pointer',
+                opacity: actionLoading ? 0.6 : 1,
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+            >
+              {actionLoading ? 'Reopening...' : 'Reopen Incident'}
+            </button>
+          ) : (
+            <button
+              onClick={handleClose}
+              disabled={actionLoading}
+              style={{
+                padding: '8px 16px',
+                background: '#e74c3c',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: actionLoading ? 'not-allowed' : 'pointer',
+                opacity: actionLoading ? 0.6 : 1,
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+            >
+              {actionLoading ? 'Closing...' : 'Close Incident'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {isClosed && (
+        <div style={{
+          padding: '12px 16px',
+          background: '#f8f9fa',
+          border: '1px solid #dee2e6',
+          borderRadius: '4px',
+          marginBottom: '20px',
+          color: '#6c757d',
+        }}>
+          This incident is closed. Reopen it to continue the conversation.
+        </div>
+      )}
 
       {assessment && (
         <div style={{ marginBottom: '20px' }}>
@@ -117,10 +202,10 @@ export default function IncidentDetailPage() {
 
       <div>
         <div style={{ display: activeTab === 'chat' ? 'block' : 'none' }}>
-          <ChatPanel incidentId={incidentId} onAssessment={handleAssessment} />
+          <ChatPanel incidentId={incidentId} onAssessment={handleAssessment} disabled={isClosed} />
         </div>
         <div style={{ display: activeTab === 'voice' ? 'block' : 'none' }}>
-          <VoiceRecorder incidentId={incidentId} onAssessment={handleAssessment} />
+          <VoiceRecorder incidentId={incidentId} onAssessment={handleAssessment} disabled={isClosed} />
         </div>
         <div style={{ display: activeTab === 'timeline' ? 'block' : 'none' }}>
           <Timeline incidentId={incidentId} />

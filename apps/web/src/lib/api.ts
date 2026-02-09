@@ -91,3 +91,23 @@ export async function sendVoice(incidentId: string, audioBlob: Blob, recaptchaTo
   }
   return res.json();
 }
+
+export async function closeIncident(incidentId: string): Promise<Incident> {
+  const res = await fetch(`${API_BASE}/api/triage/incidents/${incidentId}/close`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    await throwApiError(res, `Failed to close incident: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function reopenIncident(incidentId: string): Promise<Incident> {
+  const res = await fetch(`${API_BASE}/api/triage/incidents/${incidentId}/reopen`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    await throwApiError(res, `Failed to reopen incident: ${res.status}`);
+  }
+  return res.json();
+}
