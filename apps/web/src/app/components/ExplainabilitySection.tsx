@@ -166,7 +166,7 @@ const ESI_DESCRIPTIONS: Record<string, string> = {
 export function ExplainabilitySection({ incidentId, incident, assessment }: ExplainabilitySectionProps) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   // Refetch timeline when assessment changes (new message was processed)
   useEffect(() => {
