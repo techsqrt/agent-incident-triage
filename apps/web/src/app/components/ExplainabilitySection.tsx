@@ -135,12 +135,14 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
 
+  // Refetch timeline when assessment changes (new message was processed)
   useEffect(() => {
+    setLoading(true);
     fetchTimeline(incidentId)
       .then((res) => setEvents(res.events))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [incidentId]);
+  }, [incidentId, assessment?.id]);
 
   const history = incident?.history?.interactions || [];
 
@@ -163,14 +165,6 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
   const severity = (incident?.severity ?? latestAssessmentFromHistory?.severity) as string | undefined;
 
   const acuityInfo = acuity ? ACUITY_INFO[acuity] : null;
-
-  // Group events by trace_id for cleaner display
-  const uniqueSteps = events.reduce<AuditEvent[]>((acc, event) => {
-    if (!acc.find((e) => e.step === event.step)) {
-      acc.push(event);
-    }
-    return acc;
-  }, []);
 
   return (
     <div
@@ -474,59 +468,72 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
             </div>
           )}
 
-          {/* Process Steps */}
-          {uniqueSteps.length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
-                📊 What Happened Behind the Scenes
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {uniqueSteps.map((event, idx) => {
-                  const info = STEP_EXPLANATIONS[event.step];
-                  return (
-                    <div
-                      key={event.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        padding: '12px 16px',
-                        background: '#fff',
-                        borderRadius: '8px',
-                        border: '1px solid #e0e0e0',
-                      }}
-                    >
-                      <span style={{ fontSize: '24px', lineHeight: 1 }}>{info?.emoji || '📌'}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <strong style={{ fontSize: '14px', color: '#333' }}>
-                            {info?.title || event.step}
-                          </strong>
-                          {event.latency_ms && (
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                color: '#888',
-                                background: '#f0f0f0',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                              }}
-                            >
-                              {event.latency_ms}ms
-                            </span>
-                          )}
+          {/* Process Steps - grouped by trace (interaction) */}
+          {events.length > 0 && (() => {
+            // Group events by trace_id
+            const traceGroups: Record<string, AuditEvent[]> = {};
+            events.forEach(e => {
+              if (!traceGroups[e.trace_id]) traceGroups[e.trace_id] = [];
+              traceGroups[e.trace_id].push(e);
+            });
+            const traceIds = Object.keys(traceGroups);
+
+            return (
+              <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
+                  📊 Processing History ({traceIds.length} interaction{traceIds.length > 1 ? 's' : ''})
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {traceIds.map((traceId, traceIdx) => {
+                    const traceEvents = traceGroups[traceId];
+                    const isVoice = traceEvents.some(e => e.step === 'STT' || e.step === 'TTS');
+                    const traceTime = new Date(traceEvents[0].created_at).toLocaleTimeString();
+                    return (
+                      <div key={traceId} style={{ border: '1px solid #e0e0e0', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{
+                          padding: '8px 12px',
+                          background: isVoice ? '#e3f2fd' : '#f3e5f5',
+                          borderBottom: '1px solid #e0e0e0',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          color: isVoice ? '#1976d2' : '#7b1fa2',
+                        }}>
+                          {isVoice ? '🎤 Voice' : '💬 Chat'} Interaction #{traceIdx + 1} • {traceTime}
                         </div>
-                        <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>
-                          {info?.description || 'Processing step completed.'}
-                        </p>
+                        <div style={{ padding: '8px' }}>
+                          {traceEvents.map((event, idx) => {
+                            const info = STEP_EXPLANATIONS[event.step];
+                            return (
+                              <div
+                                key={event.id}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '6px 8px',
+                                  background: idx % 2 === 0 ? '#fafafa' : '#fff',
+                                  fontSize: '13px',
+                                }}
+                              >
+                                <span>{info?.emoji || '📌'}</span>
+                                <span style={{ fontWeight: 500 }}>{info?.title || event.step}</span>
+                                {event.model_used && (
+                                  <span style={{ color: '#666', fontSize: '11px' }}>({event.model_used})</span>
+                                )}
+                                {event.latency_ms !== null && event.latency_ms !== undefined && (
+                                  <span style={{ color: '#888', fontSize: '11px' }}>{event.latency_ms}ms</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <span style={{ fontSize: '12px', color: '#aaa' }}>Step {idx + 1}</span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Technical Details */}
           <div style={{ marginBottom: '24px' }}>
