@@ -213,7 +213,7 @@ export default function IncidentDetailPage() {
         </div>
       </div>
 
-      <ExplainabilitySection incidentId={incidentId} assessment={assessment} />
+      <ExplainabilitySection incidentId={incidentId} incident={incident} assessment={assessment} />
     </div>
   );
 }

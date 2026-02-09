@@ -24,6 +24,16 @@ from datetime import datetime
 from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentStatus, Severity
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
+
+# Map ESI acuity levels to severity
+ACUITY_TO_SEVERITY = {
+    1: Severity.CRITICAL,
+    2: Severity.CRITICAL,
+    3: Severity.HIGH,
+    4: Severity.MEDIUM,
+    5: Severity.LOW,
+}
+
 from services.api.src.api.schemas.responses import (
     AssessmentResponse,
     AuditEventResponse,
@@ -237,6 +247,7 @@ def get_incident(
         severity=row.get("severity", "UNASSIGNED"),
         created_at=_str_dt(row["created_at"]),
         updated_at=_str_dt(row["updated_at"]),
+        history=row.get("history"),
     )
 
 
@@ -422,11 +433,43 @@ def send_message(
         result_json=assessment_result.model_dump(),
     )
 
+    # Update severity based on acuity
+    severity = ACUITY_TO_SEVERITY.get(assessment_result.acuity, Severity.UNASSIGNED)
+    incident_repo.update_severity(incident_id, severity.value)
+
+    # Append user message to history
+    incident_repo.append_interaction(incident_id, {
+        "type": "user_message",
+        "ts": _str_dt(patient_msg["created_at"]),
+        "message_id": patient_msg["id"],
+        "content": body.content,
+    })
+
+    # Append assessment to history
+    incident_repo.append_interaction(incident_id, {
+        "type": "assessment",
+        "ts": _str_dt(assessment_row["created_at"]),
+        "assessment_id": assessment_row["id"],
+        "acuity": assessment_result.acuity,
+        "severity": severity.value,
+        "disposition": assessment_result.disposition,
+        "escalate": assessment_result.escalate,
+        "red_flags": assessment_result.red_flags,
+    })
+
     if assessment_result.escalate:
         incident_repo.update_status(incident_id, IncidentStatus.ESCALATED.value)
 
     assistant_text = _generate_response(extraction, assessment_result)
     assistant_msg = msg_repo.create(incident_id, "assistant", assistant_text)
+
+    # Append assistant response to history
+    incident_repo.append_interaction(incident_id, {
+        "type": "assistant_message",
+        "ts": _str_dt(assistant_msg["created_at"]),
+        "message_id": assistant_msg["id"],
+        "content": assistant_text,
+    })
 
     audit_repo.append(
         incident_id=incident_id,
@@ -439,6 +482,7 @@ def send_message(
         "incident_id": incident_id,
         "trace_id": trace_id,
         "acuity": assessment_result.acuity,
+        "severity": severity.value,
     })
 
     return MessageWithAssessmentResponse(

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { fetchTimeline } from '@/lib/api';
-import type { AuditEvent, Assessment } from '@/lib/types';
+import type { AuditEvent, Assessment, Incident, HistoryInteraction } from '@/lib/types';
 
 interface ExplainabilitySectionProps {
   incidentId: string;
+  incident: Incident | null;
   assessment: Assessment | null;
 }
 
@@ -112,7 +113,16 @@ function humanizeFlagName(name: string): string {
   return mapping[name] || name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function ExplainabilitySection({ incidentId, assessment }: ExplainabilitySectionProps) {
+const SEVERITY_COLORS: Record<string, string> = {
+  CRITICAL: '#c0392b',
+  HIGH: '#e67e22',
+  MEDIUM: '#f39c12',
+  LOW: '#27ae60',
+  UNASSIGNED: '#7f8c8d',
+  RESOLVED: '#2ecc71',
+};
+
+export function ExplainabilitySection({ incidentId, incident, assessment }: ExplainabilitySectionProps) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -124,20 +134,25 @@ export function ExplainabilitySection({ incidentId, assessment }: Explainability
       .finally(() => setLoading(false));
   }, [incidentId]);
 
-  // Only show if we have events or assessment
+  const history = incident?.history?.interactions || [];
+
+  // Only show if we have events, history, or assessment
   if (loading) {
     return null;
   }
 
-  if (events.length === 0 && !assessment) {
+  if (events.length === 0 && history.length === 0 && !assessment) {
     return null;
   }
 
-  const acuity = assessment?.result_json?.acuity as number | undefined;
-  const escalate = assessment?.result_json?.escalate as boolean | undefined;
-  const redFlags = (assessment?.result_json?.red_flags || []) as Array<{ name: string; reason: string }>;
+  // Get latest assessment from history if available
+  const latestAssessmentFromHistory = history.findLast((i: HistoryInteraction) => i.type === 'assessment') as HistoryInteraction | undefined;
+  const acuity = (assessment?.result_json?.acuity ?? latestAssessmentFromHistory?.acuity) as number | undefined;
+  const escalate = (assessment?.result_json?.escalate ?? latestAssessmentFromHistory?.escalate) as boolean | undefined;
+  const redFlags = ((assessment?.result_json?.red_flags ?? latestAssessmentFromHistory?.red_flags) || []) as Array<{ name: string; reason: string }>;
   const summary = assessment?.result_json?.summary as string | undefined;
-  const disposition = assessment?.result_json?.disposition as string | undefined;
+  const disposition = (assessment?.result_json?.disposition ?? latestAssessmentFromHistory?.disposition) as string | undefined;
+  const severity = (incident?.severity ?? latestAssessmentFromHistory?.severity) as string | undefined;
 
   const acuityInfo = acuity ? ACUITY_INFO[acuity] : null;
 
@@ -234,6 +249,30 @@ export function ExplainabilitySection({ incidentId, assessment }: Explainability
             </div>
           )}
 
+          {/* Severity Badge */}
+          {severity && severity !== 'UNASSIGNED' && (
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
+                🏥 Triage Severity
+              </h3>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  background: `${SEVERITY_COLORS[severity] || '#7f8c8d'}15`,
+                  borderRadius: '8px',
+                  border: `2px solid ${SEVERITY_COLORS[severity] || '#7f8c8d'}`,
+                }}
+              >
+                <span style={{ fontSize: '18px', fontWeight: 'bold', color: SEVERITY_COLORS[severity] || '#7f8c8d' }}>
+                  {severity}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Urgency Level */}
           {acuityInfo && (
             <div style={{ marginBottom: '24px' }}>
@@ -275,6 +314,119 @@ export function ExplainabilitySection({ incidentId, assessment }: Explainability
                   )}
                 </div>
                 <p style={{ color: '#555', margin: 0, fontSize: '14px' }}>{acuityInfo.description}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Conversation History */}
+          {history.length > 0 && (
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
+                💬 Conversation History
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {history.map((interaction: HistoryInteraction, idx: number) => {
+                  const ts = new Date(interaction.ts).toLocaleString();
+                  if (interaction.type === 'user_message') {
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '12px 16px',
+                          background: '#e3f2fd',
+                          borderRadius: '8px',
+                          borderLeft: '4px solid #2196f3',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <strong style={{ color: '#1976d2', fontSize: '13px' }}>👤 Patient</strong>
+                          <span style={{ color: '#888', fontSize: '11px' }}>{ts}</span>
+                        </div>
+                        <p style={{ color: '#333', margin: 0, fontSize: '14px' }}>{interaction.content as string}</p>
+                      </div>
+                    );
+                  }
+                  if (interaction.type === 'assistant_message') {
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '12px 16px',
+                          background: '#f3e5f5',
+                          borderRadius: '8px',
+                          borderLeft: '4px solid #9c27b0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <strong style={{ color: '#7b1fa2', fontSize: '13px' }}>🤖 Assistant</strong>
+                          <span style={{ color: '#888', fontSize: '11px' }}>{ts}</span>
+                        </div>
+                        <p style={{ color: '#333', margin: 0, fontSize: '14px' }}>{interaction.content as string}</p>
+                      </div>
+                    );
+                  }
+                  if (interaction.type === 'assessment') {
+                    const assessSeverity = interaction.severity as string;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '12px 16px',
+                          background: '#fff3e0',
+                          borderRadius: '8px',
+                          borderLeft: `4px solid ${SEVERITY_COLORS[assessSeverity] || '#f57c00'}`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <strong style={{ color: '#e65100', fontSize: '13px' }}>📊 Assessment</strong>
+                          <span style={{ color: '#888', fontSize: '11px' }}>{ts}</span>
+                        </div>
+                        <p style={{ color: '#333', margin: 0, fontSize: '13px' }}>
+                          Acuity: <strong>ESI-{interaction.acuity as number}</strong> |
+                          Severity: <strong style={{ color: SEVERITY_COLORS[assessSeverity] }}>{assessSeverity}</strong> |
+                          Disposition: <strong>{interaction.disposition as string}</strong>
+                          {interaction.escalate && <span style={{ color: '#c0392b', marginLeft: '8px' }}>⚠️ ESCALATED</span>}
+                        </p>
+                      </div>
+                    );
+                  }
+                  if (interaction.type === 'system_created') {
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '8px 16px',
+                          background: '#f5f5f5',
+                          borderRadius: '8px',
+                          borderLeft: '4px solid #9e9e9e',
+                        }}
+                      >
+                        <span style={{ color: '#666', fontSize: '12px' }}>
+                          📝 Incident created | {ts}
+                        </span>
+                      </div>
+                    );
+                  }
+                  // Status changes
+                  if (interaction.type?.startsWith('status_changed') || interaction.type?.startsWith('incident_')) {
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '8px 16px',
+                          background: '#e8f5e9',
+                          borderRadius: '8px',
+                          borderLeft: '4px solid #4caf50',
+                        }}
+                      >
+                        <span style={{ color: '#2e7d32', fontSize: '12px' }}>
+                          🔄 {interaction.type.replace(/_/g, ' ')} | {ts}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
               </div>
             </div>
           )}

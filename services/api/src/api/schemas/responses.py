@@ -33,6 +33,7 @@ class IncidentResponse(BaseModel):
     severity: Severity
     created_at: str
     updated_at: str
+    history: dict | None = None  # Full interaction history (optional for list views)
 
 
 class MessageResponse(BaseModel):

@@ -9,6 +9,16 @@ export interface DomainsResponse {
 
 export type SeverityType = 'UNASSIGNED' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'RESOLVED';
 
+export interface HistoryInteraction {
+  type: string;
+  ts: string;
+  [key: string]: unknown;
+}
+
+export interface IncidentHistory {
+  interactions: HistoryInteraction[];
+}
+
 export interface Incident {
   id: string;
   domain: string;
@@ -17,6 +27,7 @@ export interface Incident {
   severity: SeverityType;
   created_at: string;
   updated_at: string;
+  history?: IncidentHistory;
 }
 
 export interface Message {
