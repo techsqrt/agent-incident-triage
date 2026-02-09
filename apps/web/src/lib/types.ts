@@ -7,7 +7,7 @@ export interface DomainsResponse {
   domains: Domain[];
 }
 
-export type SeverityType = 'UNASSIGNED' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'RESOLVED';
+export type SeverityType = 'UNASSIGNED' | 'ESI-1' | 'ESI-2' | 'ESI-3' | 'ESI-4' | 'ESI-5';
 
 export interface HistoryInteraction {
   type: string;

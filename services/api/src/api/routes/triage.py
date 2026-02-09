@@ -25,13 +25,13 @@ from services.api.src.api.schemas.enums import Domain, IncidentMode, IncidentSta
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
 
-# Map ESI acuity levels to severity
+# Map ESI acuity levels to severity enum
 ACUITY_TO_SEVERITY = {
-    1: Severity.CRITICAL,
-    2: Severity.CRITICAL,
-    3: Severity.HIGH,
-    4: Severity.MEDIUM,
-    5: Severity.LOW,
+    1: Severity.ESI_1,
+    2: Severity.ESI_2,
+    3: Severity.ESI_3,
+    4: Severity.ESI_4,
+    5: Severity.ESI_5,
 }
 
 from services.api.src.api.schemas.responses import (
@@ -454,7 +454,7 @@ def send_message(
         "severity": severity.value,
         "disposition": assessment_result.disposition,
         "escalate": assessment_result.escalate,
-        "red_flags": assessment_result.red_flags,
+        "red_flags": [{"name": rf.name, "reason": rf.reason} for rf in assessment_result.red_flags],
     })
 
     if assessment_result.escalate:

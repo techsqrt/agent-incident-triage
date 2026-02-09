@@ -37,7 +37,7 @@ triage_incidents = Table(
     CheckConstraint("domain IN ('medical', 'sre', 'crypto')", name="ck_incidents_domain"),
     CheckConstraint("status IN ('OPEN', 'TRIAGE_READY', 'ESCALATED', 'CLOSED')", name="ck_incidents_status"),
     CheckConstraint("mode IN ('chat', 'voice')", name="ck_incidents_mode"),
-    CheckConstraint("severity IN ('UNASSIGNED', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'RESOLVED')", name="ck_incidents_severity"),
+    CheckConstraint("severity IN ('UNASSIGNED', 'ESI-1', 'ESI-2', 'ESI-3', 'ESI-4', 'ESI-5')", name="ck_incidents_severity"),
     Index("ix_incidents_domain", "domain"),
     Index("ix_incidents_status", "status"),
     Index("ix_incidents_severity", "severity"),

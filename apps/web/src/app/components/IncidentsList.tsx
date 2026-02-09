@@ -10,7 +10,7 @@ interface IncidentsListProps {
 }
 
 const STATUS_OPTIONS = ['All', 'OPEN', 'TRIAGE_READY', 'ESCALATED', 'CLOSED'];
-const SEVERITY_OPTIONS: Array<SeverityType | 'All'> = ['All', 'UNASSIGNED', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'RESOLVED'];
+const SEVERITY_OPTIONS: Array<SeverityType | 'All'> = ['All', 'UNASSIGNED', 'ESI-1', 'ESI-2', 'ESI-3', 'ESI-4', 'ESI-5'];
 const TIME_OPTIONS = [
   { value: 'all', label: 'All Time' },
   { value: '1h', label: 'Last Hour' },
@@ -28,11 +28,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 const SEVERITY_COLORS: Record<string, string> = {
   UNASSIGNED: '#95a5a6',
-  CRITICAL: '#c0392b',
-  HIGH: '#e67e22',
-  MEDIUM: '#f39c12',
-  LOW: '#27ae60',
-  RESOLVED: '#2ecc71',
+  'ESI-1': '#c0392b',
+  'ESI-2': '#e67e22',
+  'ESI-3': '#f39c12',
+  'ESI-4': '#27ae60',
+  'ESI-5': '#2ecc71',
 };
 
 const PAGE_SIZE = 10;

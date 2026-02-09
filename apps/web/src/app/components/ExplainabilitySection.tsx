@@ -114,12 +114,20 @@ function humanizeFlagName(name: string): string {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  CRITICAL: '#c0392b',
-  HIGH: '#e67e22',
-  MEDIUM: '#f39c12',
-  LOW: '#27ae60',
+  'ESI-1': '#c0392b',
+  'ESI-2': '#e67e22',
+  'ESI-3': '#f39c12',
+  'ESI-4': '#27ae60',
+  'ESI-5': '#2ecc71',
   UNASSIGNED: '#7f8c8d',
-  RESOLVED: '#2ecc71',
+};
+
+const ESI_DESCRIPTIONS: Record<string, string> = {
+  'ESI-1': 'Immediate life threat (unresponsive, cardiac arrest)',
+  'ESI-2': 'High risk (confused, severe pain 8+, multiple red flags)',
+  'ESI-3': 'Moderate (single red flag, moderate pain, abnormal vitals)',
+  'ESI-4': 'Mild (some symptoms but nothing alarming)',
+  'ESI-5': 'Minor (simple complaint, no concerning findings)',
 };
 
 export function ExplainabilitySection({ incidentId, incident, assessment }: ExplainabilitySectionProps) {
@@ -519,6 +527,80 @@ export function ExplainabilitySection({ incidentId, incident, assessment }: Expl
               </div>
             </div>
           )}
+
+          {/* Technical Details */}
+          <div style={{ marginBottom: '24px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#555', marginBottom: '12px' }}>
+              🔧 Technical Details
+            </h3>
+            <div
+              style={{
+                padding: '16px',
+                background: '#1a1a2e',
+                borderRadius: '8px',
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                color: '#e0e0e0',
+              }}
+            >
+              <div style={{ marginBottom: '12px' }}>
+                <span style={{ color: '#888' }}>// Models Used</span>
+                <div style={{ marginTop: '4px' }}>
+                  {events.filter(e => e.model_used).map((e, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ color: '#61dafb' }}>{e.step}:</span>
+                      <span style={{ color: '#98c379' }}>{e.model_used}</span>
+                      {e.latency_ms && (
+                        <span style={{ color: '#666' }}>({e.latency_ms}ms)</span>
+                      )}
+                    </div>
+                  ))}
+                  {events.filter(e => e.model_used).length === 0 && (
+                    <span style={{ color: '#666' }}>No AI models used (deterministic extraction)</span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <span style={{ color: '#888' }}>// Triage Engine</span>
+                <div style={{ marginTop: '4px', color: '#98c379' }}>
+                  rules.py → detect_red_flags() + compute_acuity()
+                </div>
+                <div style={{ marginTop: '4px', color: '#c678dd' }}>
+                  Deterministic ESI scoring (no AI in final decision)
+                </div>
+              </div>
+
+              {redFlags.length > 0 && (
+                <div style={{ marginBottom: '12px' }}>
+                  <span style={{ color: '#888' }}>// Triggered Red Flag Rules</span>
+                  <div style={{ marginTop: '4px' }}>
+                    {redFlags.map((flag, i) => (
+                      <div key={i} style={{ color: '#e06c75' }}>
+                        ⚠ {flag.name}: {flag.reason}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <span style={{ color: '#888' }}>// Acuity Calculation</span>
+                <div style={{ marginTop: '4px' }}>
+                  <span style={{ color: '#61dafb' }}>input:</span>{' '}
+                  <span style={{ color: '#e5c07b' }}>
+                    {redFlags.length} red_flags, mental_status, pain_scale, vitals
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: '#61dafb' }}>output:</span>{' '}
+                  <span style={{ color: '#98c379' }}>
+                    ESI-{acuity} → {disposition || 'continue'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Footer */}
           <div
