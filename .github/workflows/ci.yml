@@ -102,6 +102,35 @@ jobs:
         working-directory: apps/web
         run: pnpm build
 
+  e2e:
+    name: E2E Escalation Smoke Tests
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.0"
+
+      - name: Install backend dependencies
+        working-directory: services/api
+        run: poetry install
+
+      - name: Run e2e escalation tests
+        working-directory: services/api
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: poetry run pytest tests/integration/test_escalation_e2e.py -m e2e -v
+
   deploy-vercel:
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
