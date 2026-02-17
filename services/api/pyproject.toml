@@ -26,6 +26,9 @@ testcontainers = {extras = ["postgres"], version = "^4.14.1"}
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["../.."]
+markers = [
+    "e2e: end-to-end tests requiring OPENAI_API_KEY",
+]
 
 [build-system]
 requires = ["poetry-core"]
