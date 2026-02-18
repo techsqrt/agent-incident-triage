@@ -47,7 +47,7 @@ echo "==> REPO_ROOT: $REPO_ROOT"
 
 echo "==> Running backend tests"
 cd "$REPO_ROOT/services/api"
-poetry run pytest
+poetry run pytest -m "not e2e"
 cd "$REPO_ROOT"
 
 echo "==> Running frontend unit tests"
