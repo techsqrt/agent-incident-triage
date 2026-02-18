@@ -51,6 +51,16 @@ def extract_medical(
     raw = response.choices[0].message.content
     data = json.loads(raw)
 
+    # LLM sometimes returns null for fields the patient didn't mention.
+    # Coerce nulls to schema defaults so Pydantic validation doesn't fail.
+    if data.get("mental_status") is None:
+        data["mental_status"] = "alert"
+    rs = data.get("risk_signals")
+    if isinstance(rs, dict):
+        for tri_state in ("can_breathe", "chest_pain", "neuro_deficit", "bleeding_uncontrolled"):
+            if rs.get(tri_state) is None:
+                rs[tri_state] = "unknown"
+
     return MedicalExtraction(**data)
 
 

@@ -129,7 +129,7 @@ jobs:
         working-directory: services/api
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: poetry run pytest tests/integration/test_escalation_e2e.py -m e2e -v
+        run: poetry run pytest tests/integration/test_escalation_e2e.py tests/integration/test_escalation_conviction_e2e.py -m e2e -v
 
   deploy-vercel:
     name: Deploy Frontend to Vercel
